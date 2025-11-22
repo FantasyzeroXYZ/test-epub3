@@ -17,7 +17,7 @@ class EPUBReader {
         this.isAudioReady = false;
         this.isSelecting = false;
         this.dictionaryButtonTimeout = null;
-        this.viewMode = 'scroll'; // 'scroll' 或 'paged'
+        this.viewMode = 'scroll';
         this.currentSectionIndex = 0;
         this.sections = [];
         this.selectionToolbar = null;
@@ -26,6 +26,9 @@ class EPUBReader {
         this.selectionTimeout = null;
         this.touchStartTime = 0;
         this.currentWordData = null;
+        this.savedSelectionRange = null; // 添加保存的选择范围
+        this.ankiConnected = false;
+        this.currentModelFields = [];
         this.ankiSettings = {
             host: '127.0.0.1',
             port: 8765,
@@ -42,6 +45,7 @@ class EPUBReader {
     }
     
     initializeUI() {
+        // 主要UI元素
         this.sidebar = document.getElementById('sidebar');
         this.toggleSidebarBtn = document.getElementById('toggleSidebar');
         this.closeSidebarBtn = document.getElementById('closeSidebar');
@@ -108,6 +112,7 @@ class EPUBReader {
         this.dictionaryFooter = document.getElementById('dictionaryFooter');
         this.addToAnkiBtn = document.getElementById('addToAnkiBtn');
 
+        // 选择工具栏
         this.selectionToolbar = document.getElementById('selectionToolbar');
         this.lookupWordBtn = document.getElementById('lookupWordBtn');
         this.highlightBtn = document.getElementById('highlightBtn');
@@ -183,6 +188,28 @@ class EPUBReader {
 
         // 文本选择事件处理
         this.bindSelectionEvents();
+
+        // 牌组和模板选择事件
+        this.ankiDeck.addEventListener('change', () => {
+            this.ankiSettings.deck = this.ankiDeck.value;
+            this.saveAnkiSettings();
+        });
+
+        this.ankiModel.addEventListener('change', async () => {
+            this.ankiSettings.model = this.ankiModel.value;
+            await this.loadModelFields(this.ankiModel.value);
+            this.saveAnkiSettings();
+        });
+
+        // 字段选择事件
+        const fieldSelectors = [
+            this.ankiWordField, this.ankiMeaningField, 
+            this.ankiSentenceField, this.ankiAudioField, this.ankiTagsField
+        ];
+
+        fieldSelectors.forEach(select => {
+            select.addEventListener('change', () => this.saveAnkiSettings());
+        });
         
         // 拖拽上传事件
         this.uploadArea.addEventListener('dragover', (e) => {
@@ -202,6 +229,9 @@ class EPUBReader {
                 this.loadEPUB(files[0]);
             }
         });
+
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => this.handleKeydown(e));
     }
 
     // 初始化设置分组折叠功能
@@ -216,11 +246,34 @@ class EPUBReader {
         });
     }
 
+    // 键盘快捷键处理
+    handleKeydown(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        
+        switch(e.key) {
+            case 'ArrowLeft':
+                e.preventDefault();
+                this.prevPage();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                this.nextPage();
+                break;
+            case ' ':
+                e.preventDefault();
+                this.togglePlayPause();
+                break;
+            case 'Escape':
+                this.hideDictionaryModal();
+                this.hideSelectionToolbar();
+                break;
+        }
+    }
+
     // 设置相关方法
     toggleSettings() {
         this.settingsSidebar.classList.toggle('open');
         
-        // 如果打开设置，关闭目录
         if (this.settingsSidebar.classList.contains('open')) {
             this.sidebar.classList.remove('open');
         }
@@ -229,17 +282,15 @@ class EPUBReader {
     loadSettings() {
         const settings = JSON.parse(localStorage.getItem('epubReaderSettings') || '{}');
         
-        // 应用设置到控件
         this.viewModeSelect.value = settings.viewMode || 'scroll';
         this.autoScroll.checked = settings.autoScroll || false;
         this.fontSize.value = settings.fontSize || 'medium';
         this.theme.value = settings.theme || 'light';
-        this.autoPlay.checked = settings.autoPlay !== false; // 默认开启
+        this.autoPlay.checked = settings.autoPlay !== false;
         this.speechRate.value = settings.speechRate || '1';
         this.offlineMode.checked = settings.offlineMode || false;
-        this.syncProgress.checked = settings.syncProgress !== false; // 默认开启
+        this.syncProgress.checked = settings.syncProgress !== false;
         
-        // 应用设置到界面
         this.applyFontSize();
         this.applyTheme();
         this.switchViewMode(this.viewModeSelect.value);
@@ -260,304 +311,6 @@ class EPUBReader {
         localStorage.setItem('epubReaderSettings', JSON.stringify(settings));
     }
 
-    // Anki设置相关方法
-    loadAnkiSettings() {
-        const settings = JSON.parse(localStorage.getItem('epubReaderAnkiSettings') || '{}');
-        this.ankiSettings = { ...this.ankiSettings, ...settings };
-        
-        // 应用到控件
-        this.ankiHost.value = this.ankiSettings.host;
-        this.ankiPort.value = this.ankiSettings.port;
-        this.ankiDeck.value = this.ankiSettings.deck;
-        this.ankiModel.value = this.ankiSettings.model;
-        
-        // 如果已设置连接信息，自动测试连接并加载数据
-        if (this.ankiSettings.host && this.ankiSettings.port) {
-            // 延迟执行，确保UI先加载完成
-            setTimeout(() => {
-                this.testAnkiConnection().then(() => {
-                    // 连接成功后恢复字段选择
-                    this.restoreFieldSelections();
-                });
-            }, 1000);
-        }
-    }
-
-    saveAnkiSettings() {
-        this.ankiSettings = {
-            host: this.ankiHost.value,
-            port: parseInt(this.ankiPort.value),
-            deck: this.ankiDeck.value,
-            model: this.ankiModel.value,
-            wordField: this.ankiWordField.value,
-            meaningField: this.ankiMeaningField.value,
-            sentenceField: this.ankiSentenceField.value,
-            audioField: this.ankiAudioField.value,
-            tagsField: this.ankiTagsField.value
-        };
-        
-        localStorage.setItem('epubReaderAnkiSettings', JSON.stringify(this.ankiSettings));
-        this.showToast('Anki设置已保存');
-    }
-
-    async testAnkiConnection() {
-        try {
-            this.showToast('正在测试Anki连接...');
-            const result = await this.ankiRequest('version', {});
-            if (result) {
-                this.showToast(`Anki连接成功，版本: ${result}`);
-                // 连接成功后自动加载牌组
-                await this.loadAnkiDecks();
-            }
-        } catch (error) {
-            this.showToast('Anki连接失败，请检查AnkiConnect插件');
-            console.error('Anki连接错误:', error);
-        }
-    }
-
-    async loadAnkiDecks() {
-        try {
-            const decks = await this.ankiRequest('deckNames', {});
-            console.log('加载到的牌组:', decks);
-            
-            this.ankiDeck.innerHTML = '<option value="">选择牌组</option>';
-            decks.forEach(deck => {
-                const option = document.createElement('option');
-                option.value = deck;
-                option.textContent = deck;
-                this.ankiDeck.appendChild(option);
-            });
-            
-            // 如果有保存的牌组设置，自动选择
-            if (this.ankiSettings.deck) {
-                this.ankiDeck.value = this.ankiSettings.deck;
-            }
-            
-            // 牌组选择变化时加载模板
-            this.ankiDeck.addEventListener('change', () => {
-                if (this.ankiDeck.value) {
-                    this.loadAnkiModels();
-                } else {
-                    this.clearAnkiModelAndFields();
-                }
-            });
-            
-        } catch (error) {
-            console.error('加载牌组失败:', error);
-            this.showToast('加载牌组失败');
-        }
-    }
-
-    async loadAnkiModels() {
-        try {
-            const models = await this.ankiRequest('modelNames', {});
-            console.log('加载到的模板:', models);
-            
-            this.ankiModel.innerHTML = '<option value="">选择模板</option>';
-            models.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model;
-                option.textContent = model;
-                this.ankiModel.appendChild(option);
-            });
-            
-            // 如果有保存的模板设置，自动选择
-            if (this.ankiSettings.model) {
-                this.ankiModel.value = this.ankiSettings.model;
-            }
-            
-            // 模板选择变化时加载字段
-            this.ankiModel.addEventListener('change', () => {
-                if (this.ankiModel.value) {
-                    this.loadAnkiFields();
-                } else {
-                    this.clearAnkiFields();
-                }
-            });
-            
-            // 如果当前已选择模板，立即加载字段
-            if (this.ankiModel.value) {
-                await this.loadAnkiFields();
-            }
-            
-        } catch (error) {
-            console.error('加载模板失败:', error);
-            this.showToast('加载模板失败');
-        }
-    }
-
-    async loadAnkiFields() {
-        try {
-            if (!this.ankiModel.value) {
-                this.clearAnkiFields();
-                return;
-            }
-            
-            const fields = await this.ankiRequest('modelFieldNames', { 
-                modelName: this.ankiModel.value 
-            });
-            
-            console.log('加载到的字段:', fields);
-            
-            this.clearAnkiFields();
-            
-            // 为所有字段选择框填充选项
-            fields.forEach(field => {
-                this.addFieldOption(this.ankiWordField, field);
-                this.addFieldOption(this.ankiMeaningField, field);
-                this.addFieldOption(this.ankiSentenceField, field);
-                this.addFieldOption(this.ankiAudioField, field);
-                this.addFieldOption(this.ankiTagsField, field);
-            });
-            
-            // 恢复保存的字段设置
-            this.restoreFieldSelections();
-            
-        } catch (error) {
-            console.error('加载字段失败:', error);
-            this.showToast('加载字段失败');
-            this.clearAnkiFields();
-        }
-    }
-
-    // 辅助方法：添加字段选项
-    addFieldOption(selectElement, fieldName) {
-        const option = document.createElement('option');
-        option.value = fieldName;
-        option.textContent = fieldName;
-        selectElement.appendChild(option);
-    }
-
-    // 辅助方法：清空模板和字段
-    clearAnkiModelAndFields() {
-        this.ankiModel.innerHTML = '<option value="">选择模板</option>';
-        this.clearAnkiFields();
-    }
-
-    // 辅助方法：清空所有字段选择框
-    clearAnkiFields() {
-        const fields = [
-            this.ankiWordField,
-            this.ankiMeaningField,
-            this.ankiSentenceField,
-            this.ankiAudioField,
-            this.ankiTagsField
-        ];
-        
-        fields.forEach(field => {
-            field.innerHTML = '<option value="">选择字段</option>';
-        });
-    }
-
-    // 辅助方法：恢复字段选择
-    restoreFieldSelections() {
-        if (this.ankiSettings.wordField) {
-            this.ankiWordField.value = this.ankiSettings.wordField;
-        }
-        if (this.ankiSettings.meaningField) {
-            this.ankiMeaningField.value = this.ankiSettings.meaningField;
-        }
-        if (this.ankiSettings.sentenceField) {
-            this.ankiSentenceField.value = this.ankiSettings.sentenceField;
-        }
-        if (this.ankiSettings.audioField) {
-            this.ankiAudioField.value = this.ankiSettings.audioField;
-        }
-        if (this.ankiSettings.tagsField) {
-            this.ankiTagsField.value = this.ankiSettings.tagsField;
-        }
-    }
-
-    async ankiRequest(action, params) {
-        const url = `http://${this.ankiSettings.host}:${this.ankiSettings.port}`;
-        
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: action,
-                    version: 6,
-                    params: params
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.error) {
-                throw new Error(result.error);
-            }
-            
-            return result.result;
-        } catch (error) {
-            console.error('Anki请求失败:', error);
-            throw new Error(`Anki请求失败: ${error.message}`);
-        }
-    }
-
-    async addToAnki() {
-        if (!this.currentWordData || !this.selectedText) {
-            this.showToast('没有可添加的单词数据');
-            return;
-        }
-
-        if (!this.ankiSettings.deck || !this.ankiSettings.model) {
-            this.showToast('请先配置Anki牌组和模板');
-            return;
-        }
-
-        try {
-            // 构建笔记数据
-            const fields = {};
-            
-            if (this.ankiSettings.wordField) {
-                fields[this.ankiSettings.wordField] = this.selectedText;
-            }
-            
-            if (this.ankiSettings.meaningField && this.currentWordData.meanings) {
-                const meaning = this.currentWordData.meanings[0];
-                if (meaning) {
-                    fields[this.ankiSettings.meaningField] = meaning.definitions[0]?.definition || '';
-                }
-            }
-            
-            if (this.ankiSettings.sentenceField) {
-                // 这里可以获取当前句子，简化实现使用选中文本
-                fields[this.ankiSettings.sentenceField] = this.selectedText;
-            }
-            
-            if (this.ankiSettings.tagsField) {
-                fields[this.ankiSettings.tagsField] = 'epub-reader';
-            }
-            
-            const note = {
-                deckName: this.ankiSettings.deck,
-                modelName: this.ankiSettings.model,
-                fields: fields,
-                tags: ['epub-reader']
-            };
-            
-            const result = await this.ankiRequest('addNote', { note });
-            
-            if (result) {
-                this.showToast('单词已添加到Anki');
-                this.hideDictionaryModal();
-            } else {
-                this.showToast('添加失败，请检查字段映射');
-            }
-            
-        } catch (error) {
-            console.error('添加Anki笔记失败:', error);
-            this.showToast('添加失败: ' + error.message);
-        }
-    }
-
     applyFontSize() {
         const fontSize = this.fontSize.value;
         const sizes = {
@@ -569,7 +322,6 @@ class EPUBReader {
         
         document.documentElement.style.setProperty('--base-font-size', sizes[fontSize]);
         
-        // 更新页面内容的字体大小
         const pageContent = document.querySelector('.page-content');
         if (pageContent) {
             pageContent.style.fontSize = sizes[fontSize];
@@ -609,7 +361,6 @@ class EPUBReader {
     }
 
     exportData() {
-        // 导出阅读数据
         const readingData = {
             currentBook: this.currentBook,
             currentChapterIndex: this.currentChapterIndex,
@@ -632,15 +383,811 @@ class EPUBReader {
     clearData() {
         if (confirm('确定要清除所有缓存数据吗？此操作不可撤销。')) {
             localStorage.removeItem('epubReaderSettings');
-            // 可以添加更多清理逻辑
+            localStorage.removeItem('epubReaderAnkiSettings');
             this.showToast('缓存数据已清除');
-            location.reload(); // 重新加载页面应用默认设置
+            location.reload();
         }
+    }
+
+    // Anki设置相关方法
+    loadAnkiSettings() {
+        const settings = JSON.parse(localStorage.getItem('epubReaderAnkiSettings') || '{}');
+        this.ankiSettings = { ...this.ankiSettings, ...settings };
+        
+        this.ankiHost.value = this.ankiSettings.host;
+        this.ankiPort.value = this.ankiSettings.port;
+        this.ankiDeck.value = this.ankiSettings.deck;
+        this.ankiModel.value = this.ankiSettings.model;
+        
+        this.restoreFieldSelections();
+        
+        if (this.ankiSettings.host && this.ankiSettings.port) {
+            setTimeout(() => {
+                this.testAnkiConnection().then(() => {
+                    console.log('Anki连接测试完成');
+                });
+            }, 1000);
+        }
+    }
+
+    saveAnkiSettings() {
+        this.ankiSettings = {
+            host: this.ankiHost.value,
+            port: parseInt(this.ankiPort.value),
+            deck: this.ankiDeck.value,
+            model: this.ankiModel.value,
+            wordField: this.ankiWordField.value,
+            meaningField: this.ankiMeaningField.value,
+            sentenceField: this.ankiSentenceField.value,
+            audioField: this.ankiAudioField.value,
+            tagsField: this.ankiTagsField.value
+        };
+        
+        localStorage.setItem('epubReaderAnkiSettings', JSON.stringify(this.ankiSettings));
+        this.showToast('Anki设置已保存');
+    }
+
+    async testAnkiConnection() {
+        try {
+            this.showToast('正在测试Anki连接...');
+            
+            const response = await fetch(`http://${this.ankiSettings.host}:${this.ankiSettings.port}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'version',
+                    version: 6
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.result) {
+                    this.ankiConnected = true;
+                    this.showToast(`Anki连接成功，版本: ${data.result}`);
+                    
+                    await this.loadAnkiDecks();
+                    await this.loadAnkiModels();
+                    return true;
+                }
+            }
+            throw new Error('AnkiConnect响应错误');
+        } catch (error) {
+            this.ankiConnected = false;
+            this.showToast('Anki连接失败，请检查AnkiConnect插件');
+            console.error('Anki连接错误:', error);
+            return false;
+        }
+    }
+
+    async loadAnkiDecks() {
+        try {
+            const decks = await this.ankiRequest('deckNames', {});
+            console.log('加载到的牌组:', decks);
+            
+            const currentDeck = this.ankiDeck.value;
+            
+            this.ankiDeck.innerHTML = '<option value="">选择牌组</option>';
+            decks.forEach(deck => {
+                const option = document.createElement('option');
+                option.value = deck;
+                option.textContent = deck;
+                this.ankiDeck.appendChild(option);
+            });
+            
+            if (this.ankiSettings.deck && decks.includes(this.ankiSettings.deck)) {
+                this.ankiDeck.value = this.ankiSettings.deck;
+            } else if (currentDeck && decks.includes(currentDeck)) {
+                this.ankiDeck.value = currentDeck;
+            }
+            
+        } catch (error) {
+            console.error('获取牌组列表错误:', error);
+            this.showToast('获取牌组列表失败');
+        }
+    }
+
+    async loadAnkiModels() {
+        try {
+            const models = await this.ankiRequest('modelNames', {});
+            console.log('加载到的模板:', models);
+            
+            const currentModel = this.ankiModel.value;
+            
+            this.ankiModel.innerHTML = '<option value="">选择模板</option>';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                this.ankiModel.appendChild(option);
+            });
+            
+            if (this.ankiSettings.model && models.includes(this.ankiSettings.model)) {
+                this.ankiModel.value = this.ankiSettings.model;
+                await this.loadModelFields(this.ankiSettings.model);
+            } else if (currentModel && models.includes(currentModel)) {
+                this.ankiModel.value = currentModel;
+                await this.loadModelFields(currentModel);
+            } else if (models.length > 0) {
+                this.ankiModel.value = models[0];
+                await this.loadModelFields(models[0]);
+            }
+            
+        } catch (error) {
+            console.error('获取模型列表错误:', error);
+            this.showToast('获取模板列表失败');
+        }
+    }
+
+    async loadModelFields(modelName) {
+        try {
+            const fields = await this.ankiRequest('modelFieldNames', { 
+                modelName: modelName 
+            });
+            
+            console.log('加载到的字段:', fields);
+            this.currentModelFields = fields;
+            this.updateFieldSelectors(fields);
+            
+            if (!this.ankiSettings.wordField || !this.ankiSettings.sentenceField) {
+                this.setDefaultFields(fields);
+            }
+            
+        } catch (error) {
+            console.error('获取模型字段错误:', error);
+            this.showToast('获取字段列表失败');
+        }
+    }
+
+    updateFieldSelectors(fields) {
+        const fieldSelectors = [
+            this.ankiWordField,
+            this.ankiMeaningField,
+            this.ankiSentenceField,
+            this.ankiAudioField,
+            this.ankiTagsField
+        ];
+        
+        fieldSelectors.forEach(select => {
+            select.innerHTML = '<option value="">选择字段</option>';
+            fields.forEach(field => {
+                const option = document.createElement('option');
+                option.value = field;
+                option.textContent = field;
+                select.appendChild(option);
+            });
+        });
+        
+        this.restoreFieldSelections();
+    }
+
+    setDefaultFields(fields) {
+        const fieldMap = fields.map(f => f.toLowerCase());
+        
+        if (!this.ankiSettings.wordField) {
+            if (fieldMap.includes('word')) {
+                this.ankiWordField.value = 'word';
+            } else if (fieldMap.includes('front')) {
+                this.ankiWordField.value = 'front';
+            } else if (fields.length > 0) {
+                this.ankiWordField.selectedIndex = 0;
+            }
+        }
+        
+        if (!this.ankiSettings.sentenceField) {
+            if (fieldMap.includes('sentence')) {
+                this.ankiSentenceField.value = 'sentence';
+            } else if (fieldMap.includes('example')) {
+                this.ankiSentenceField.value = 'example';
+            } else if (fieldMap.includes('back')) {
+                this.ankiSentenceField.value = 'back';
+            } else if (fields.length > 1) {
+                this.ankiSentenceField.selectedIndex = 1;
+            }
+        }
+        
+        if (!this.ankiSettings.meaningField) {
+            if (fieldMap.includes('definition')) {
+                this.ankiMeaningField.value = 'definition';
+            } else if (fieldMap.includes('meaning')) {
+                this.ankiMeaningField.value = 'meaning';
+            } else if (fieldMap.includes('back')) {
+                this.ankiMeaningField.value = 'back';
+            } else if (fields.length > 2) {
+                this.ankiMeaningField.selectedIndex = 2;
+            }
+        }
+        
+        if (!this.ankiSettings.audioField) {
+            if (fieldMap.includes('audio')) {
+                this.ankiAudioField.value = 'audio';
+            } else if (fieldMap.includes('sound')) {
+                this.ankiAudioField.value = 'sound';
+            } else if (fields.length > 3) {
+                this.ankiAudioField.selectedIndex = 3;
+            }
+        }
+        
+        if (!this.ankiSettings.tagsField) {
+            if (fieldMap.includes('tags')) {
+                this.ankiTagsField.value = 'tags';
+            } else if (fields.length > 4) {
+                this.ankiTagsField.selectedIndex = 4;
+            }
+        }
+    }
+
+    restoreFieldSelections() {
+        if (this.ankiSettings.wordField) {
+            this.ankiWordField.value = this.ankiSettings.wordField;
+        }
+        if (this.ankiSettings.meaningField) {
+            this.ankiMeaningField.value = this.ankiSettings.meaningField;
+        }
+        if (this.ankiSettings.sentenceField) {
+            this.ankiSentenceField.value = this.ankiSettings.sentenceField;
+        }
+        if (this.ankiSettings.audioField) {
+            this.ankiAudioField.value = this.ankiSettings.audioField;
+        }
+        if (this.ankiSettings.tagsField) {
+            this.ankiTagsField.value = this.ankiSettings.tagsField;
+        }
+    }
+
+    async ankiRequest(action, params = {}) {
+        const url = `http://${this.ankiSettings.host}:${this.ankiSettings.port}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: action,
+                    version: 6,
+                    params: params
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            
+            return result.result;
+        } catch (error) {
+            console.error('Anki请求失败:', error);
+            throw new Error(`Anki请求失败: ${error.message}`);
+        }
+    }
+
+    async addToAnki() {
+        // 检查连接状态
+        if (!this.ankiConnected) {
+            const connected = await this.testAnkiConnection();
+            if (!connected) {
+                this.showToast('请先连接Anki!');
+                return;
+            }
+        }
+
+        // 确保有选中的文本
+        if (!this.selectedText) {
+            this.showToast('没有选中的文本');
+            return;
+        }
+
+        if (!this.currentWordData) {
+            this.showToast('请先查询单词释义');
+            return;
+        }
+
+        if (!this.ankiSettings.deck || !this.ankiSettings.model) {
+            this.showToast('请先配置Anki牌组和模板!');
+            return;
+        }
+
+        // 验证必要字段
+        if (!this.ankiSettings.wordField || !this.ankiSettings.sentenceField) {
+            this.showToast('请配置单词字段和句子字段!');
+            return;
+        }
+
+        // 保存原始按钮状态
+        const originalHTML = this.addToAnkiBtn.innerHTML;
+        this.addToAnkiBtn.disabled = true;
+        this.addToAnkiBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 添加中...';
+
+        try {
+            // 恢复选择范围以确保音频处理能正常工作
+            this.restoreSelection();
+            
+            await this.processAnkiCard();
+            this.showToast('✅ 单词已成功添加到Anki!');
+            this.hideDictionaryModal();
+        } catch (error) {
+            console.error('添加卡片失败:', error);
+            this.showToast('❌ 添加失败: ' + error.message);
+        } finally {
+            this.addToAnkiBtn.disabled = false;
+            this.addToAnkiBtn.innerHTML = originalHTML;
+        }
+    }
+
+    async processAnkiCard() {
+        const word = this.selectedText.trim();
+        
+        const sentence = this.getWordSentence(word);
+        console.log('句子字段内容:', sentence);
+        
+        const definition = this.getWordDefinition();
+        
+        const note = {
+            deckName: this.ankiSettings.deck,
+            modelName: this.ankiSettings.model,
+            fields: {
+                [this.ankiSettings.wordField]: word,
+                [this.ankiSettings.sentenceField]: sentence
+            },
+            options: { allowDuplicate: false },
+            tags: ['epub-reader']
+        };
+        
+        if (this.ankiSettings.meaningField && definition) {
+            note.fields[this.ankiSettings.meaningField] = definition;
+        }
+        
+        if (this.ankiSettings.tagsField) {
+            note.fields[this.ankiSettings.tagsField] = 'epub-reader';
+        }
+        
+        if (this.ankiSettings.audioField) {
+            try {
+                const audioFilename = await this.processAudioForWord(word);
+                if (audioFilename) {
+                    note.fields[this.ankiSettings.audioField] = `[sound:${audioFilename}]`;
+                    console.log('音频字段设置:', audioFilename);
+                }
+            } catch (error) {
+                console.error('音频处理失败:', error);
+            }
+        }
+        
+        console.log('准备添加到Anki的笔记:', note);
+        
+        await this.addCardToAnki(note);
+    }
+
+    getWordDefinition() {
+        if (!this.currentWordData || !this.currentWordData.meanings) {
+            return '暂无释义';
+        }
+        
+        const meaning = this.currentWordData.meanings[0];
+        if (!meaning) return '暂无释义';
+        
+        const definition = meaning.definitions[0]?.definition || '暂无释义';
+        return `${meaning.partOfSpeech || ''} ${definition}`.trim();
+    }
+
+    getWordSentence(selectedText) {
+        try {
+            if (!this.savedSelectionRange) {
+                return selectedText;
+            }
+            
+            const range = this.savedSelectionRange;
+            let elementWithId = range.startContainer.parentElement;
+            
+            // 向上查找有ID的元素
+            while (elementWithId && !elementWithId.id && elementWithId.parentElement) {
+                elementWithId = elementWithId.parentElement;
+            }
+            
+            if (!elementWithId || !elementWithId.id) {
+                return selectedText;
+            }
+            
+            const elementId = elementWithId.id;
+            
+            // 在SMIL数据中查找对应的文本段
+            const segment = this.currentSMILData.find(s => s.textId === elementId);
+            if (!segment) {
+                return selectedText;
+            }
+            
+            // 直接从DOM中获取该ID元素的完整文本内容
+            const textElement = document.getElementById(elementId);
+            if (textElement) {
+                const fullText = textElement.textContent || textElement.innerText;
+                const cleanedText = this.cleanSentenceText(fullText);
+                console.log('从SMIL获取的完整句子:', cleanedText);
+                return cleanedText || selectedText;
+            }
+            
+            return selectedText;
+            
+        } catch (error) {
+            console.error('从SMIL获取句子失败:', error);
+            return selectedText;
+        }
+    }
+
+    cleanSentenceText(text) {
+        return text
+            .replace(/<[^>]*>/g, '') // 移除HTML标签
+            .replace(/\s+/g, ' ') // 合并多余空格
+            .replace(/[\r\n\t]/g, ' ') // 替换换行和制表符
+            .replace(/^[^a-zA-Z]*/, '') // 移除开头的非字母字符
+            .replace(/[^a-zA-Z0-9\.!?]*$/, '') // 移除结尾的非字母数字和标点
+            .trim();
+    }
+
+    async processAudioForWord(word) {
+        try {
+            if (!this.currentAudio || !this.currentSMILData || this.currentSMILData.length === 0) {
+                console.log('没有可用的音频数据');
+                return null;
+            }
+
+            if (!this.savedSelectionRange) {
+                console.log('没有保存的文本选择范围');
+                return null;
+            }
+            
+            const range = this.savedSelectionRange;
+            let elementWithId = range.startContainer.parentElement;
+            
+            // 向上查找有ID的元素
+            while (elementWithId && !elementWithId.id && elementWithId.parentElement) {
+                elementWithId = elementWithId.parentElement;
+            }
+            
+            if (!elementWithId || !elementWithId.id) {
+                console.log('未找到带ID的文本元素');
+                return null;
+            }
+            
+            const elementId = elementWithId.id;
+            console.log('查找音频段，元素ID:', elementId);
+            
+            // 精确匹配SMIL数据
+            const segment = this.currentSMILData.find(s => s.textId === elementId);
+            
+            if (!segment) {
+                console.log('未找到对应的音频段');
+                console.log('可用的音频段ID:', this.currentSMILData.map(s => s.textId));
+                return null;
+            }
+            
+            console.log('找到精确匹配的音频段:', segment);
+            
+            // 获取音频Blob
+            const audioBlob = await this.getAudioBlob(segment.audioSrc);
+            if (!audioBlob) {
+                console.log('无法获取音频Blob');
+                return null;
+            }
+            
+            console.log('获取到音频Blob，大小:', audioBlob.size);
+            
+            // 切割音频 - 使用SMIL中精确的时间段
+            const audioClip = await this.generateAudioClip(audioBlob, segment.start, segment.end);
+            if (!audioClip) {
+                console.log('音频切割失败');
+                return null;
+            }
+            
+            // 存储到Anki
+            const filename = this.generateAudioFileName(word);
+            const storedName = await this.storeMediaFile(filename, audioClip);
+            
+            console.log('音频文件存储成功:', storedName);
+            return storedName;
+            
+        } catch (error) {
+            console.error('处理音频失败:', error);
+            return null;
+        }
+    }
+
+    // 获取当前播放音频的Blob
+    async getCurrentAudioBlob() {
+        try {
+            if (!this.currentAudio || !this.currentAudio.src) {
+                return null;
+            }
+            
+            if (this.currentAudio.src.startsWith('blob:')) {
+                const response = await fetch(this.currentAudio.src);
+                return await response.blob();
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('获取当前音频Blob失败:', error);
+            return null;
+        }
+    }
+
+    // 获取音频时长
+    async getAudioDuration(blob) {
+        return new Promise((resolve) => {
+            const audio = new Audio();
+            audio.addEventListener('loadedmetadata', () => {
+                resolve(audio.duration);
+            });
+            audio.addEventListener('error', () => {
+                resolve(0);
+            });
+            audio.src = URL.createObjectURL(blob);
+        });
+    }
+
+    async generateAudioClip(audioBlob, startTime, endTime) {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            const audioDuration = audioBuffer.duration;
+            console.log('音频总时长:', audioDuration, 'SMIL时间范围:', startTime, '-', endTime);
+            
+            // 验证时间范围在音频范围内
+            if (startTime >= audioDuration || endTime > audioDuration) {
+                console.warn('SMIL时间范围超出音频长度，使用完整音频');
+                return audioBlob;
+            }
+            
+            if (startTime >= endTime) {
+                console.warn('SMIL时间范围无效，使用完整音频');
+                return audioBlob;
+            }
+            
+            const sampleRate = audioBuffer.sampleRate;
+            const startSample = Math.floor(startTime * sampleRate);
+            const endSample = Math.floor(endTime * sampleRate);
+            const frameCount = endSample - startSample;
+            
+            const newBuffer = audioContext.createBuffer(
+                audioBuffer.numberOfChannels,
+                frameCount,
+                sampleRate
+            );
+            
+            for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+                const oldData = audioBuffer.getChannelData(channel);
+                const newData = newBuffer.getChannelData(channel);
+                for (let i = 0; i < frameCount; i++) {
+                    newData[i] = oldData[startSample + i];
+                }
+            }
+            
+            return this.bufferToWavBlob(newBuffer);
+            
+        } catch (error) {
+            console.error('音频切割失败:', error);
+            return audioBlob;
+        }
+    }
+
+    bufferToWavBlob(buffer) {
+        const numChannels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const length = buffer.length;
+        const bytesPerSample = 2;
+        const blockAlign = numChannels * bytesPerSample;
+        
+        const dataSize = length * blockAlign;
+        
+        const bufferArray = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(bufferArray);
+        
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+        
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * blockAlign, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bytesPerSample * 8, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+        
+        const offset = 44;
+        let index = 0;
+        
+        for (let i = 0; i < length; i++) {
+            for (let channel = 0; channel < numChannels; channel++) {
+                const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+                const int16Sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                view.setInt16(offset + index, int16Sample, true);
+                index += 2;
+            }
+        }
+        
+        return new Blob([bufferArray], { type: 'audio/wav' });
+    }
+
+    generateAudioFileName(word) {
+        const cleanWord = word.replace(/[^a-z]/gi, '').toLowerCase() || 'audio';
+        let fileName = `audio_${cleanWord}_${Date.now()}.wav`;
+        fileName = fileName.replace(/[^\w.\-]/g, '_');
+        return fileName;
+    }
+
+    async storeMediaFile(filename, blob) {
+        try {
+            const base64Data = await this.blobToBase64(blob);
+            const pureBase64 = base64Data.split(',')[1];
+            
+            if (!pureBase64) {
+                throw new Error('Base64数据转换失败');
+            }
+            
+            const result = await this.ankiRequest('storeMediaFile', {
+                filename: filename,
+                data: pureBase64,
+                deleteExisting: true
+            });
+            
+            return result || filename;
+            
+        } catch (error) {
+            console.error('存储媒体文件失败:', error);
+            return null;
+        }
+    }
+
+    blobToBase64(blob) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    async addCardToAnki(note) {
+        console.log('准备添加卡片到 Anki:', note);
+
+        try {
+            const result = await this.ankiRequest('addNote', { note });
+            
+            if (result) {
+                console.log('✅ 卡片添加成功，ID:', result);
+                return result;
+            } else {
+                console.warn('AnkiConnect 返回空结果，可能未创建卡片');
+                throw new Error('卡片创建失败');
+            }
+            
+        } catch (error) {
+            if (error.message.includes('duplicate')) {
+                console.warn('检测到重复卡片，跳过添加');
+                throw new Error('已存在相同卡片');
+            } else {
+                console.error('添加卡片失败:', error);
+                throw error;
+            }
+        }
+    }
+
+    async getAudioBlob(audioPath) {
+        try {
+            console.log('尝试获取音频Blob，路径:', audioPath);
+            
+            // 如果是blob URL，直接获取
+            if (audioPath.startsWith('blob:')) {
+                const response = await fetch(audioPath);
+                return await response.blob();
+            }
+            
+            // 先尝试直接匹配
+            let blob = this.resourceMap.get(audioPath);
+            if (blob) {
+                console.log('直接匹配找到音频:', audioPath);
+                return blob;
+            }
+            
+            // 尝试各种可能的路径变体
+            const possiblePaths = this.generateAudioPaths(audioPath);
+            console.log('尝试的音频路径列表:', possiblePaths);
+            
+            for (const path of possiblePaths) {
+                blob = this.resourceMap.get(path);
+                if (blob) {
+                    console.log('找到音频文件:', path);
+                    return blob;
+                }
+            }
+            
+            // 如果还是没找到，尝试搜索包含文件名的资源
+            const fileName = audioPath.split('/').pop();
+            if (fileName) {
+                for (const [path, blob] of this.resourceMap.entries()) {
+                    if (path.includes(fileName)) {
+                        console.log('通过文件名搜索找到音频:', path);
+                        return blob;
+                    }
+                }
+            }
+            
+            console.warn('无法找到音频文件:', audioPath);
+            console.log('当前资源映射中的文件:', Array.from(this.resourceMap.keys()));
+            return null;
+            
+        } catch (error) {
+            console.error('获取音频Blob失败:', error);
+            return null;
+        }
+    }
+
+    generateAudioPaths(audioPath) {
+        const paths = new Set();
+        
+        // 原始路径
+        paths.add(audioPath);
+        
+        // 处理相对路径
+        if (audioPath.startsWith('../')) {
+            const normalized = audioPath.substring(3); // 移除 ../
+            paths.add(normalized);
+            paths.add('./' + normalized);
+        }
+        
+        if (audioPath.startsWith('./')) {
+            const normalized = audioPath.substring(2); // 移除 ./
+            paths.add(normalized);
+            paths.add('../' + normalized);
+        }
+        
+        // 处理绝对路径
+        if (audioPath.startsWith('/')) {
+            const normalized = audioPath.substring(1); // 移除开头的 /
+            paths.add(normalized);
+            paths.add('./' + normalized);
+            paths.add('../' + normalized);
+        }
+        
+        // 添加各种组合
+        paths.add(audioPath.replace(/^\.\.\//, ''));
+        paths.add(audioPath.replace(/^\.\//, ''));
+        paths.add(audioPath.replace(/^\//, ''));
+        
+        // 添加带Audio目录的路径
+        if (!audioPath.includes('Audio/')) {
+            paths.add('Audio/' + audioPath);
+            paths.add('./Audio/' + audioPath);
+            paths.add('../Audio/' + audioPath);
+        }
+        
+        // 添加当前目录
+        paths.add('./' + audioPath);
+        paths.add('../' + audioPath);
+        
+        return Array.from(paths);
     }
 
     // 文本选择事件绑定
     bindSelectionEvents() {
-        // 点击页面其他地方隐藏工具栏
         document.addEventListener('mousedown', (e) => {
             if (!this.selectionToolbar.contains(e.target)) {
                 this.hideSelectionToolbar();
@@ -653,29 +1200,24 @@ class EPUBReader {
             }
         });
 
-        // 文本选择变化事件
         document.addEventListener('selectionchange', () => {
             this.handleSelectionChange();
         });
 
-        // 阻止阅读区域的长按默认行为
         const preventContextMenu = (e) => {
             e.preventDefault();
             e.stopPropagation();
             return false;
         };
 
-        // 为阅读区域添加事件监听器
         this.readerContent = document.querySelector('.reader-content');
         if (this.readerContent) {
             this.readerContent.addEventListener('contextmenu', preventContextMenu);
             this.readerContent.addEventListener('touchstart', (e) => {
-                // 标记触摸开始，用于后续处理
                 this.touchStartTime = Date.now();
             });
             
             this.readerContent.addEventListener('touchend', (e) => {
-                // 处理长按后的选择
                 const touchDuration = Date.now() - this.touchStartTime;
                 if (touchDuration > 500) {
                     setTimeout(() => {
@@ -685,41 +1227,33 @@ class EPUBReader {
             });
         }
 
-        // 全局阻止长按默认行为
         document.addEventListener('contextmenu', (e) => {
-            // 只在阅读区域允许文本选择
             if (e.target.closest('.reader-content') || 
                 e.target.closest('.page-content') ||
                 e.target.closest('.page-section')) {
-                // 在阅读区域内，允许选择但阻止默认工具栏
                 e.preventDefault();
                 e.stopPropagation();
                 return false;
             }
         });
 
-        // 触摸结束事件 - 用于移动端
         document.addEventListener('touchend', (e) => {
-            // 延迟处理，确保文本选择完成
             setTimeout(() => {
                 this.handleSelectionChange(e);
             }, 100);
         });
 
-        // 鼠标弹起事件 - 用于桌面端
         document.addEventListener('mouseup', (e) => {
             this.handleSelectionChange(e);
         });
     }
 
-    // 选择变化处理方法
     handleSelectionChange(e) {
         const selection = window.getSelection();
         const selectedText = selection.toString().trim();
         
         console.log('选中的文本:', selectedText, '长度:', selectedText.length);
         
-        // 清除之前的定时器
         if (this.selectionTimeout) {
             clearTimeout(this.selectionTimeout);
         }
@@ -727,15 +1261,11 @@ class EPUBReader {
         if (selectedText.length > 0 && selectedText.length < 100) {
             this.selectedText = selectedText;
             
-            // 延迟显示工具栏，确保选择完成
             this.selectionTimeout = setTimeout(() => {
                 this.showSelectionToolbar(selection);
                 
-                // 在安卓端，主动清除选择以防止原生工具栏出现
                 if (/Android/i.test(navigator.userAgent)) {
                     setTimeout(() => {
-                        // 不清除选择，因为我们想要显示自定义工具栏
-                        // 但阻止默认行为
                         if (e) {
                             e.preventDefault();
                             e.stopPropagation();
@@ -764,14 +1294,12 @@ class EPUBReader {
         
         if (rect.width === 0 && rect.height === 0) return;
         
-        // 计算工具栏位置（在选择文本上方）
         const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
         const scrollY = window.pageYOffset || document.documentElement.scrollTop;
         
         const toolbarX = rect.left + rect.width / 2 + scrollX;
         const toolbarY = rect.top + scrollY;
         
-        // 确保工具栏在可视区域内
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const toolbarRect = this.selectionToolbar.getBoundingClientRect();
@@ -779,23 +1307,19 @@ class EPUBReader {
         let finalX = toolbarX - toolbarRect.width / 2;
         let finalY = toolbarY - toolbarRect.height - 10;
         
-        // 边界检查 - 防止超出屏幕
         if (finalX < 10) finalX = 10;
         if (finalX + toolbarRect.width > viewportWidth - 10) {
             finalX = viewportWidth - toolbarRect.width - 10;
         }
         
-        // 如果上方空间不够，显示在选中文本下方
         if (finalY < 10) {
             finalY = toolbarY + rect.height + 10;
         }
         
-        // 确保工具栏不会超出屏幕底部
         if (finalY + toolbarRect.height > viewportHeight - 10) {
             finalY = viewportHeight - toolbarRect.height - 10;
         }
         
-        // 应用位置
         this.selectionToolbar.style.left = finalX + 'px';
         this.selectionToolbar.style.top = finalY + 'px';
         this.selectionToolbar.style.transform = 'translateY(-110%)';
@@ -804,28 +1328,37 @@ class EPUBReader {
         
         console.log('显示自定义工具栏，选中文本:', this.selectedText, '位置:', finalX, finalY);
         
-        // 在安卓端，额外阻止默认行为
+        // 保存选择范围
+        this.saveCurrentSelection();
+        
         if (/Android/i.test(navigator.userAgent)) {
             document.addEventListener('contextmenu', this.preventAndroidToolbar, { once: true });
         }
     }
 
-    // 专门阻止安卓工具栏的方法
     preventAndroidToolbar(e) {
         e.preventDefault();
         e.stopPropagation();
         return false;
     }
 
-    // 工具栏按钮功能
     lookupWord() {
-        if (!this.selectedText) return;
+        if (!this.selectedText) {
+            // 如果没有保存的选中文本，尝试从当前选择中获取
+            const selection = window.getSelection();
+            this.selectedText = selection.toString().trim();
+        }
+        
+        if (!this.selectedText) {
+            this.showToast('请先选择文本');
+            return;
+        }
         
         this.hideSelectionToolbar();
         this.showDictionaryModal();
         
-        // 清除选择
-        window.getSelection().removeAllRanges();
+        // 不清除选择，保留选择状态用于后续处理
+        // window.getSelection().removeAllRanges();
     }
 
     highlightText() {
@@ -857,7 +1390,6 @@ class EPUBReader {
             this.showToast('文本已复制到剪贴板');
         }).catch(err => {
             console.error('复制失败:', err);
-            // 降级方案
             const textArea = document.createElement('textarea');
             textArea.value = this.selectedText;
             document.body.appendChild(textArea);
@@ -882,7 +1414,6 @@ class EPUBReader {
                 console.error('分享失败:', err);
             });
         } else {
-            // 降级处理
             this.copyText();
         }
     }
@@ -914,7 +1445,6 @@ class EPUBReader {
         
         this.viewMode = mode;
         
-        // 重新加载当前章节
         if (this.currentChapterIndex !== undefined && this.chapters.length > 0) {
             this.loadChapter(this.currentChapterIndex);
         }
@@ -927,13 +1457,11 @@ class EPUBReader {
         const chapter = this.chapters[index];
         
         if (this.viewMode === 'scroll') {
-            // 滚动模式 - 显示完整章节内容
             this.pageContent.innerHTML = chapter.content;
             this.pageContent.className = 'page-content scroll-mode';
             this.currentPageSpan.textContent = (index + 1).toString();
             this.totalPagesSpan.textContent = this.chapters.length;
         } else {
-            // 分页模式 - 将章节内容分割成多个页面
             this.splitChapterIntoPages(chapter.content);
             this.pageContent.className = 'page-content paged-mode';
             this.currentPageSpan.textContent = '1';
@@ -945,7 +1473,6 @@ class EPUBReader {
         this.currentSMILData = chapter.audio ? chapter.audio.smilData || [] : [];
         this.bindDoubleClickEvents();
         
-        // 重新绑定选择事件到新内容
         this.bindSelectionEventsToNewContent();
         
         if (chapter.audio && chapter.audio.src) {
@@ -957,26 +1484,23 @@ class EPUBReader {
         this.pageContent.scrollTop = 0;
     }
 
-    // 为新加载的内容绑定选择事件
     bindSelectionEventsToNewContent() {
         const contentElements = this.pageContent.querySelectorAll('p, span, div, li, h1, h2, h3, h4, h5, h6');
         
         contentElements.forEach(element => {
-            // 阻止长按默认行为
             element.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 return false;
             });
             
-            // 触摸事件处理
             element.addEventListener('touchstart', (e) => {
                 this.touchStartTime = Date.now();
             });
             
             element.addEventListener('touchend', (e) => {
                 const touchDuration = Date.now() - this.touchStartTime;
-                if (touchDuration > 400) { // 长按
+                if (touchDuration > 400) {
                     setTimeout(() => {
                         this.handleSelectionChange(e);
                     }, 100);
@@ -990,28 +1514,23 @@ class EPUBReader {
         tempDiv.innerHTML = content;
         tempDiv.classList.add('epub-content');
         
-        // 获取阅读区域尺寸
         const container = this.pageContent;
-        const containerHeight = container.offsetHeight - 40; // 减去padding
+        const containerHeight = container.offsetHeight - 40;
         const containerWidth = container.offsetWidth - 40;
         
         this.sections = [];
         
-        // 简单分页：按段落分割
         const elements = tempDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, blockquote, pre, ul, ol, li');
         
         if (elements.length === 0) {
-            // 如果没有找到段落元素，直接使用原始内容
             this.sections.push(content);
         } else {
             let currentPage = [];
             let currentHeight = 0;
             
             for (let element of elements) {
-                // 估算元素高度
                 const elementHeight = this.simpleEstimateHeight(element, containerWidth);
                 
-                // 如果当前页已经有内容且加上这个元素会超出，就创建新页
                 if (currentHeight > 0 && currentHeight + elementHeight > containerHeight) {
                     this.sections.push(currentPage.map(el => el.outerHTML).join(''));
                     currentPage = [];
@@ -1021,7 +1540,6 @@ class EPUBReader {
                 currentPage.push(element.cloneNode(true));
                 currentHeight += elementHeight;
                 
-                // 如果单个元素就超过页面高度，强制分页
                 if (elementHeight > containerHeight && currentPage.length > 1) {
                     const lastElement = currentPage.pop();
                     this.sections.push(currentPage.map(el => el.outerHTML).join(''));
@@ -1030,27 +1548,23 @@ class EPUBReader {
                 }
             }
             
-            // 添加最后一页
             if (currentPage.length > 0) {
                 this.sections.push(currentPage.map(el => el.outerHTML).join(''));
             }
         }
         
-        // 如果分页失败，回退到单页显示
         if (this.sections.length === 0) {
             this.sections.push(content);
         }
         
         console.log('分页结果:', this.sections.length, '页');
         
-        // 显示分页内容
         this.renderPagedContent();
         this.currentSectionIndex = 0;
         this.showSection(0);
     }
 
     simpleEstimateHeight(element, containerWidth) {
-        // 创建临时元素来测量高度
         const temp = document.createElement('div');
         temp.style.cssText = `
             position: absolute;
@@ -1069,7 +1583,6 @@ class EPUBReader {
         const height = temp.offsetHeight;
         document.body.removeChild(temp);
         
-        // 添加一些边距
         return height + 20;
     }
 
@@ -1109,7 +1622,6 @@ class EPUBReader {
     toggleSidebar() {
         this.sidebar.classList.toggle('open');
         
-        // 如果打开目录，关闭设置
         if (this.sidebar.classList.contains('open')) {
             this.settingsSidebar.classList.remove('open');
         }
@@ -1117,13 +1629,11 @@ class EPUBReader {
     
     prevPage() {
         if (this.viewMode === 'scroll') {
-            // 滚动模式 - 切换到上一章
             if (this.currentChapterIndex > 0) {
                 this.stopAllAudio();
                 this.loadChapter(this.currentChapterIndex - 1);
             }
         } else {
-            // 分页模式 - 切换到上一页或上一章
             if (this.currentSectionIndex > 0) {
                 this.showSection(this.currentSectionIndex - 1);
             } else if (this.currentChapterIndex > 0) {
@@ -1135,13 +1645,11 @@ class EPUBReader {
     
     nextPage() {
         if (this.viewMode === 'scroll') {
-            // 滚动模式 - 切换到下一章
             if (this.currentChapterIndex < this.chapters.length - 1) {
                 this.stopAllAudio();
                 this.loadChapter(this.currentChapterIndex + 1);
             }
         } else {
-            // 分页模式 - 切换到下一页或下一章
             if (this.currentSectionIndex < this.sections.length - 1) {
                 this.showSection(this.currentSectionIndex + 1);
             } else if (this.currentChapterIndex < this.chapters.length - 1) {
@@ -1152,18 +1660,17 @@ class EPUBReader {
     }
     
     showDictionaryModal() {
-        console.log('显示词典弹窗:', this.selectedText);
+        console.log('显示词典弹窗，选中文本:', this.selectedText);
         
         this.hideSelectionToolbar();
         
-        // 清除文本选择
-        window.getSelection().removeAllRanges();
+        // 不清除选择，保留选择状态
+        // window.getSelection().removeAllRanges();
         
         this.dictionaryModal.classList.add('show');
         this.dictionaryOverlay.classList.add('show');
         this.dictionaryFooter.style.display = 'none';
         
-        // 显示加载状态
         this.dictionaryContent.innerHTML = `
             <div class="loading">
                 <div class="loader"></div>
@@ -1171,13 +1678,32 @@ class EPUBReader {
             </div>
         `;
         
-        // 查询词典
+        // 保存当前选择范围，防止丢失
+        this.saveCurrentSelection();
+        
         this.fetchDictionaryData(this.selectedText)
             .then(result => {
                 this.displayDictionaryResult(result);
                 this.dictionaryFooter.style.display = 'block';
             })
             .catch(error => this.displayDictionaryError(error));
+    }
+
+    // 保存当前选择范围
+    saveCurrentSelection() {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+            this.savedSelectionRange = selection.getRangeAt(0).cloneRange();
+        }
+    }
+
+    // 恢复选择范围
+    restoreSelection() {
+        if (this.savedSelectionRange) {
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(this.savedSelectionRange);
+        }
     }
     
     async fetchDictionaryData(word) {
@@ -1257,8 +1783,13 @@ class EPUBReader {
         this.dictionaryModal.classList.remove('show');
         this.dictionaryOverlay.classList.remove('show');
         this.dictionaryFooter.style.display = 'none';
-        window.getSelection().removeAllRanges();
+        
+        // 清除保存的选择范围
+        this.savedSelectionRange = null;
         this.currentWordData = null;
+        
+        // 最终清除选择
+        window.getSelection().removeAllRanges();
     }
     
     async safePlayAudio(audio) {
@@ -1333,6 +1864,8 @@ class EPUBReader {
         this.resourceMap.clear();
         const files = Object.keys(this.zip.files);
         
+        console.log('EPUB文件列表:', files);
+        
         for (const filePath of files) {
             if (!filePath.endsWith('/')) {
                 try {
@@ -1340,9 +1873,22 @@ class EPUBReader {
                     if (file) {
                         const blob = await file.async('blob');
                         this.resourceMap.set(filePath, blob);
+                        
+                        // 添加标准化路径
                         const normalizedPath = filePath.replace(/^\.\//, '');
                         if (normalizedPath !== filePath) {
                             this.resourceMap.set(normalizedPath, blob);
+                        }
+                        
+                        // 添加文件名作为键（用于搜索）
+                        const fileName = filePath.split('/').pop();
+                        if (fileName && !this.resourceMap.has(fileName)) {
+                            this.resourceMap.set(fileName, blob);
+                        }
+                        
+                        // 如果是音频文件，记录日志
+                        if (filePath.match(/\.(mp3|wav|ogg|m4a)$/i)) {
+                            console.log('找到音频文件:', filePath);
                         }
                     }
                 } catch (e) {
@@ -1350,6 +1896,8 @@ class EPUBReader {
                 }
             }
         }
+        
+        console.log('资源映射构建完成，包含文件数量:', this.resourceMap.size);
     }
     
     async getFileContent(path) {
@@ -1441,7 +1989,6 @@ class EPUBReader {
                         ? await this.parseSMIL(manifest[item.mediaOverlay]?.href)
                         : null;
                     
-                    // 获取章节标题
                     const title = await this.extractChapterTitle(item.href) || `第${chapters.length + 1}章`;
                     
                     chapters.push({
@@ -1506,7 +2053,6 @@ class EPUBReader {
             }
         });
         
-        // 添加自适应样式类
         const body = doc.body;
         body.classList.add('epub-content');
         
@@ -1586,7 +2132,9 @@ class EPUBReader {
         const data = [];
         const pars = smilDoc.querySelectorAll('par');
         
-        pars.forEach(par => {
+        console.log('解析SMIL数据，找到段落数量:', pars.length);
+        
+        pars.forEach((par, index) => {
             const textElem = par.querySelector('text');
             const audioElem = par.querySelector('audio');
             
@@ -1605,13 +2153,21 @@ class EPUBReader {
                         textId: textId,
                         audioSrc: audioSrc,
                         start: this.parseTime(clipBegin),
-                        end: this.parseTime(clipEnd)
+                        end: this.parseTime(clipEnd),
+                        index: index // 添加索引用于调试
+                    });
+                    
+                    console.log(`SMIL段落 ${index}:`, {
+                        textId: textId,
+                        audioSrc: audioSrc,
+                        timeRange: `${clipBegin} - ${clipEnd}`
                     });
                 }
             }
         });
         
         data.sort((a, b) => a.start - b.start);
+        console.log('SMIL数据解析完成，共', data.length, '个段落');
         return data;
     }
     
@@ -1688,11 +2244,19 @@ class EPUBReader {
         if (!this.audioElements[chapter.id]) {
             try {
                 const audioUrl = await this.createAudioFromZip(chapter.audio.src);
+                console.log('创建音频URL:', audioUrl);
+                
                 const audio = new Audio(audioUrl);
                 
                 await new Promise((resolve, reject) => {
                     audio.addEventListener('canplaythrough', resolve);
-                    audio.addEventListener('error', reject);
+                    audio.addEventListener('error', (e) => {
+                        console.error('音频加载错误:', e);
+                        reject(new Error(`音频加载失败: ${chapter.audio.src}`));
+                    });
+                    
+                    // 超时处理
+                    setTimeout(() => reject(new Error('音频加载超时')), 10000);
                 });
                 
                 audio.addEventListener('timeupdate', () => {
@@ -1701,6 +2265,7 @@ class EPUBReader {
                 });
                 
                 audio.addEventListener('loadedmetadata', () => {
+                    console.log('音频时长:', audio.duration);
                     this.durationSpan.textContent = this.formatTime(audio.duration);
                 });
                 
@@ -1709,9 +2274,13 @@ class EPUBReader {
                 this.audioElements[chapter.id] = audio;
                 this.currentAudio = audio;
                 this.isAudioReady = true;
+                
+                console.log('音频播放器准备完成');
+                
             } catch (error) {
                 console.error('加载音频失败:', error);
                 this.playerContainer.style.display = 'none';
+                this.showToast('音频加载失败: ' + error.message);
                 return;
             }
         } else {
@@ -1777,19 +2346,35 @@ class EPUBReader {
     }
     
     async createAudioFromZip(audioPath) {
-        const possiblePaths = [
-            audioPath,
-            audioPath.replace(/^\.\//, ''),
-            './' + audioPath,
-            audioPath.startsWith('/') ? audioPath.substring(1) : audioPath
-        ];
+        console.log('尝试创建音频URL，路径:', audioPath);
+        
+        const possiblePaths = this.generateAudioPaths(audioPath);
         
         for (const tryPath of possiblePaths) {
             const blob = this.resourceMap.get(tryPath);
             if (blob) {
+                console.log('找到音频资源:', tryPath);
                 return URL.createObjectURL(blob);
             }
         }
+        
+        // 如果没找到，尝试搜索文件名
+        const fileName = audioPath.split('/').pop();
+        if (fileName) {
+            for (const [path, blob] of this.resourceMap.entries()) {
+                if (path.includes(fileName)) {
+                    console.log('通过文件名搜索找到音频:', path);
+                    return URL.createObjectURL(blob);
+                }
+            }
+        }
+        
+        console.error('音频文件不存在:', audioPath);
+        console.log('可用的音频文件:', 
+            Array.from(this.resourceMap.entries())
+                .filter(([path, blob]) => path.match(/\.(mp3|wav|ogg|m4a)$/i))
+                .map(([path]) => path)
+        );
         
         throw new Error(`音频文件不存在: ${audioPath}`);
     }
