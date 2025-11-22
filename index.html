@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EPUB3 阅读器</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 目录侧边栏 -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>目录</h2>
+                <button class="btn btn-outline" id="closeSidebar">关闭</button>
+            </div>
+            <div class="book-info">
+                <div class="book-title" id="bookTitle">EPUB3 阅读器</div>
+                <div class="book-author" id="bookAuthor">请上传EPUB文件</div>
+            </div>
+            <div class="toc-container" id="tocContainer"></div>
+        </div>
+
+        <div class="main-content">
+            <!-- 顶部工具栏 -->
+            <div class="reader-header">
+                <div class="header-top-row">
+                    <div class="function-buttons">
+                        <button class="btn" id="toggleSidebar">
+                            <span>📖</span>
+                            <span>目录</span>
+                        </button>
+                        <button class="btn btn-outline" id="uploadBtn">
+                            <span>📁</span>
+                            <span>上传</span>
+                        </button>
+                        <!-- 设置按钮 -->
+                        <button class="btn" id="toggleSettings">
+                            <span>⚙️</span>
+                            <span>设置</span>
+                        </button>
+                    </div>
+                    <div class="header-controls">
+                        <span class="page-indicator">第 <span id="currentPage">1</span> 页 / 共 <span id="totalPages">?</span> 页</span>
+                    </div>
+                </div>
+                <div class="header-bottom-row">
+                    <button class="btn btn-outline" id="prevPage">⬅️</button>
+                    <button class="btn btn-outline" id="nextPage">➡️</button>
+                </div>
+            </div>
+
+            <!-- 主要内容区域 -->
+            <div class="reader-content">
+                <div class="upload-container" id="uploadContainer">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📚</div>
+                        <h3>上传EPUB文件</h3>
+                        <p>点击或拖拽EPUB文件到此区域</p>
+                        <input type="file" id="fileInput" accept=".epub" style="display: none;">
+                    </div>
+                    <p>支持EPUB3格式，包含音频的书籍将自动启用朗读功能</p>
+                </div>
+                
+                <div class="swipe-container" id="swipeContainer" style="display: none;">
+                    <!-- 缩小边缘点击区域 -->
+                    <div class="edge-tap-area left" id="leftEdgeTapArea"></div>
+                    <div class="page-content" id="pageContent"></div>
+                    <div class="edge-tap-area right" id="rightEdgeTapArea"></div>
+                </div>
+            </div>
+
+            <!-- 词典查询模态框 -->
+            <div class="dictionary-modal-overlay" id="dictionaryOverlay"></div>
+            <div class="dictionary-modal" id="dictionaryModal">
+                <div class="dictionary-modal-header">
+                    <div class="dictionary-modal-title">词典查询</div>
+                    <button class="dictionary-modal-close" id="closeModal">×</button>
+                </div>
+                <div class="dictionary-modal-content" id="dictionaryContent">
+                    <div class="loading">
+                        <div class="loader"></div>
+                        <p>查询中...</p>
+                    </div>
+                </div>
+                <div class="dictionary-modal-footer" id="dictionaryFooter" style="display: none;">
+                    <button class="btn" id="addToAnkiBtn">
+                        <span>📚</span>
+                        <span>添加到Anki</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 音频播放器 -->
+            <div class="player-container" id="playerContainer" style="display: none;">
+                <div class="player-controls">
+                    <button class="player-btn" id="playPauseBtn">▶</button>
+                    <div class="progress-container">
+                        <span class="time-display" id="currentTime">0:00</span>
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress" id="progress"></div>
+                        </div>
+                        <span class="time-display" id="duration">0:00</span>
+                    </div>
+                    <select class="playback-rate" id="playbackRate">
+                        <option value="0.5">0.5x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1" selected>1x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2x</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设置侧边栏 -->
+        <div class="settings-sidebar" id="settingsSidebar">
+            <div class="settings-header">
+                <h2>设置</h2>
+                <button class="btn btn-outline" id="closeSettings">关闭</button>
+            </div>
+            <div class="settings-content">
+                <div class="setting-group">
+                    <div class="setting-group-header" data-group="reading">
+                        <h3>📖 阅读设置</h3>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="setting-group-content" id="readingSettings">
+                        <div class="setting-item">
+                            <span class="setting-label">阅读模式</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="viewMode">
+                                    <option value="scroll">滚动模式</option>
+                                    <option value="paged">分页模式</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">自动翻页</span>
+                            <div class="setting-control">
+                                <label class="switch">
+                                    <input type="checkbox" id="autoScroll">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">字体大小</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="fontSize">
+                                    <option value="small">小</option>
+                                    <option value="medium" selected>中</option>
+                                    <option value="large">大</option>
+                                    <option value="xlarge">特大</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">主题</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="theme">
+                                    <option value="light" selected>浅色</option>
+                                    <option value="dark">深色</option>
+                                    <option value="sepia">护眼</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <div class="setting-group-header" data-group="audio">
+                        <h3>🔊 音频设置</h3>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="setting-group-content" id="audioSettings">
+                        <div class="setting-item">
+                            <span class="setting-label">自动播放</span>
+                            <div class="setting-control">
+                                <label class="switch">
+                                    <input type="checkbox" id="autoPlay" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">朗读速度</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="speechRate">
+                                    <option value="0.5">0.5x</option>
+                                    <option value="0.75">0.75x</option>
+                                    <option value="1" selected>1x</option>
+                                    <option value="1.25">1.25x</option>
+                                    <option value="1.5">1.5x</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 在Anki设置部分添加加载状态提示 -->
+                <div class="setting-group">
+                    <div class="setting-group-header" data-group="anki">
+                        <h3>📚 Anki设置</h3>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="setting-group-content" id="ankiSettings">
+                        <div class="setting-item">
+                            <span class="setting-label">AnkiConnect</span>
+                            <div class="setting-control">
+                                <button class="btn btn-outline" id="testAnkiConnection">测试连接</button>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">IP地址</span>
+                            <div class="setting-control">
+                                <input type="text" class="input-control" id="ankiHost" placeholder="127.0.0.1" value="127.0.0.1">
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">端口</span>
+                            <div class="setting-control">
+                                <input type="number" class="input-control" id="ankiPort" placeholder="8765" value="8765">
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">牌组</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiDeck">
+                                    <option value="">选择牌组</option>
+                                </select>
+                                <span class="loading-text" id="deckLoading" style="display: none; font-size: 0.8rem; color: #666;">加载中...</span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">模板</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiModel">
+                                    <option value="">选择模板</option>
+                                </select>
+                                <span class="loading-text" id="modelLoading" style="display: none; font-size: 0.8rem; color: #666;">加载中...</span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">单词字段</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiWordField">
+                                    <option value="">选择字段</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">释义字段</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiMeaningField">
+                                    <option value="">选择字段</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">句子字段</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiSentenceField">
+                                    <option value="">选择字段</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">音频字段</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiAudioField">
+                                    <option value="">选择字段</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">标签字段</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="ankiTagsField">
+                                    <option value="">选择字段</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <button class="btn" id="saveAnkiSettings">保存设置</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <div class="setting-group-header" data-group="advanced">
+                        <h3>⚙️ 高级设置</h3>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="setting-group-content" id="advancedSettings">
+                        <div class="setting-item">
+                            <span class="setting-label">启用离线模式</span>
+                            <div class="setting-control">
+                                <label class="switch">
+                                    <input type="checkbox" id="offlineMode">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">同步阅读进度</span>
+                            <div class="setting-control">
+                                <label class="switch">
+                                    <input type="checkbox" id="syncProgress" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <div class="setting-group-header" data-group="data">
+                        <h3>💾 数据管理</h3>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="setting-group-content" id="dataSettings">
+                        <div class="setting-item">
+                            <button class="btn btn-outline" id="exportData">导出阅读数据</button>
+                        </div>
+                        <div class="setting-item">
+                            <button class="btn btn-outline" id="clearData">清除缓存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自定义选择工具栏 -->
+    <div class="selection-toolbar" id="selectionToolbar">
+        <button class="selection-toolbar-btn" id="lookupWordBtn">
+            <span>🔍</span>
+            <span>查词</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="highlightBtn">
+            <span>⭐</span>
+            <span>高亮</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="copyBtn">
+            <span>📋</span>
+            <span>复制</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="shareBtn">
+            <span>↗</span>
+            <span>分享</span>
+        </button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>
