@@ -2,10 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPUB阅读器 (Multi-column 分页版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EPUB3 阅读器</title>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
@@ -16,7 +15,7 @@
                 <button class="btn btn-outline" id="closeSidebar">关闭</button>
             </div>
             <div class="book-info">
-                <div class="book-title" id="bookTitle">EPUB 阅读器</div>
+                <div class="book-title" id="bookTitle">EPUB3 阅读器</div>
                 <div class="book-author" id="bookAuthor">请上传EPUB文件</div>
             </div>
             <div class="toc-container" id="tocContainer"></div>
@@ -27,7 +26,7 @@
             <div class="reader-header">
                 <div class="header-top-row">
                     <div class="function-buttons">
-                        <button class="btn" id="menuToggle">
+                        <button class="btn" id="toggleSidebar">
                             <span>📖</span>
                             <span>目录</span>
                         </button>
@@ -51,30 +50,51 @@
                 </div>
             </div>
 
-            <!-- EPUB 显示区域 -->
-            <div class="epub-display-area">
-                <div class="book-container" id="bookContainer">
-                    <div class="content-wrapper" id="contentWrapper">
-                        <div class="adaptive-content" id="adaptiveContent">
-                            <div class="no-content">
-                                <h1>📚 EPUB 阅读器</h1>
-                                <p>请选择 EPUB 文件开始阅读</p>
-                            </div>
-                        </div>
+            <!-- 主要内容区域 -->
+            <div class="reader-content">
+                <div class="upload-container" id="uploadContainer">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📚</div>
+                        <h3>上传EPUB文件</h3>
+                        <p>点击或拖拽EPUB文件到此区域</p>
+                        <input type="file" id="fileInput" accept=".epub" style="display: none;">
                     </div>
+                    <p>支持EPUB3格式，包含音频的书籍将自动启用朗读功能</p>
                 </div>
                 
-                <!-- 翻页区域 -->
-                <div class="swipe-area left-swipe" id="prevSwipeArea"></div>
-                <div class="swipe-area right-swipe" id="nextSwipeArea"></div>
+                <div class="swipe-container" id="swipeContainer" style="display: none;">
+                    <!-- 缩小边缘点击区域 -->
+                    <div class="edge-tap-area left" id="leftEdgeTapArea"></div>
+                    <div class="page-content" id="pageContent"></div>
+                    <div class="edge-tap-area right" id="rightEdgeTapArea"></div>
+                </div>
+            </div>
+
+            <!-- 词典查询模态框 -->
+            <div class="dictionary-modal-overlay" id="dictionaryOverlay"></div>
+            <div class="dictionary-modal" id="dictionaryModal">
+                <div class="dictionary-modal-header">
+                    <div class="dictionary-modal-title">词典查询</div>
+                    <button class="dictionary-modal-close" id="closeModal">×</button>
+                </div>
+                <div class="dictionary-modal-content" id="dictionaryContent">
+                    <div class="loading">
+                        <div class="loader"></div>
+                        <p>查询中...</p>
+                    </div>
+                </div>
+                <div class="dictionary-modal-footer" id="dictionaryFooter" style="display: none;">
+                    <button class="btn" id="addToAnkiBtn">
+                        <span>📚</span>
+                        <span>添加到Anki</span>
+                    </button>
+                </div>
             </div>
 
             <!-- 音频播放器 -->
             <div class="player-container" id="playerContainer" style="display: none;">
                 <div class="player-controls">
-                    <button class="player-btn" id="playPauseBtn">
-                        <i class="fas fa-play"></i>
-                    </button>
+                    <button class="player-btn" id="playPauseBtn">▶</button>
                     <div class="progress-container">
                         <span class="time-display" id="currentTime">0:00</span>
                         <div class="progress-bar" id="progressBar">
@@ -92,54 +112,6 @@
                     </select>
                 </div>
             </div>
-            
-            <!-- 词典弹窗 -->
-            <div class="dictionary-modal" id="dictionaryModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>词典查询</h3>
-                        <button id="closeDictionary">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    <div class="modal-body" id="dictionaryContent">
-                        <!-- 词典内容将在这里显示 -->
-                    </div>
-                    <div class="modal-footer" id="dictionaryFooter">
-                        <button id="addToAnkiBtn" class="btn-primary">
-                            <i class="fas fa-graduation-cap"></i> 添加到Anki
-                        </button>
-                        <button id="closeDictionaryBtn" class="btn-secondary">
-                            关闭
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 选择工具栏 -->
-            <div class="selection-toolbar" id="selectionToolbar">
-                <button id="lookupWordBtn" class="toolbar-btn">
-                    <i class="fas fa-book"></i> 查词
-                </button>
-                <button id="highlightBtn" class="toolbar-btn">
-                    <i class="fas fa-highlighter"></i> 高亮
-                </button>
-                <button id="addToAnkiQuickBtn" class="toolbar-btn">
-                    <i class="fas fa-graduation-cap"></i> Anki制卡
-                </button>
-                <button id="copyBtn" class="toolbar-btn">
-                    <i class="fas fa-copy"></i> 复制
-                </button>
-            </div>
-            
-            <!-- 遮罩层 -->
-            <div class="overlay" id="overlay"></div>
-            
-            <!-- 加载指示器 -->
-            <div class="loading-indicator" id="loadingIndicator" style="display: none;">
-                <div class="spinner"></div>
-                <p>加载中...</p>
-            </div>
         </div>
 
         <!-- 设置侧边栏 -->
@@ -155,6 +127,24 @@
                         <span class="collapse-icon">▼</span>
                     </div>
                     <div class="setting-group-content" id="readingSettings">
+                        <div class="setting-item">
+                            <span class="setting-label">阅读模式</span>
+                            <div class="setting-control">
+                                <select class="select-control" id="viewMode">
+                                    <option value="scroll">滚动模式</option>
+                                    <option value="paged">分页模式</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <span class="setting-label">自动翻页</span>
+                            <div class="setting-control">
+                                <label class="switch">
+                                    <input type="checkbox" id="autoScroll">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
                         <div class="setting-item">
                             <span class="setting-label">字体大小</span>
                             <div class="setting-control">
@@ -209,7 +199,7 @@
                     </div>
                 </div>
                 
-                <!-- Anki设置部分 -->
+                <!-- 在Anki设置部分添加加载状态提示 -->
                 <div class="setting-group">
                     <div class="setting-group-header" data-group="anki">
                         <h3>📚 Anki设置</h3>
@@ -343,11 +333,27 @@
         </div>
     </div>
 
-    <!-- 文件选择器（隐藏） -->
-    <input type="file" id="epubFile" accept=".epub" style="display: none;" />
+    <!-- 自定义选择工具栏 -->
+    <div class="selection-toolbar" id="selectionToolbar">
+        <button class="selection-toolbar-btn" id="lookupWordBtn">
+            <span>🔍</span>
+            <span>查词</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="highlightBtn">
+            <span>⭐</span>
+            <span>高亮</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="copyBtn">
+            <span>📋</span>
+            <span>复制</span>
+        </button>
+        <button class="selection-toolbar-btn outline" id="shareBtn">
+            <span>↗</span>
+            <span>分享</span>
+        </button>
+    </div>
 
-    <!-- 引入JSZip库用于解压EPUB -->
-    <script src="lib/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="js/script.js"></script>
 </body>
 </html>

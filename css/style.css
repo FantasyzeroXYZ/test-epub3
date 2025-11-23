@@ -1,3 +1,7 @@
+/* ----------------------------------------------------
+ * EPUB 阅读器核心样式 (Multi-column 分页版)
+ * ---------------------------------------------------- */
+
 :root {
     --primary-color: #3498db;
     --secondary-color: #2c3e50;
@@ -7,6 +11,7 @@
     --base-font-size: 1.1rem;
 }
 
+/* 全局重置 */
 * {
     margin: 0;
     padding: 0;
@@ -18,10 +23,40 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
-    line-height: 1.6;
     overflow: hidden;
-    touch-action: pan-y;
+    height: 100vh;
+    width: 100vw;
+    touch-action: pan-y pinch-zoom;
     font-size: var(--base-font-size);
+}
+
+/* 禁用浏览器默认选择样式 */
+::selection {
+    background: rgba(52, 152, 219, 0.3);
+}
+
+::-moz-selection {
+    background: rgba(52, 152, 219, 0.3);
+}
+
+/* 禁用浏览器默认上下文菜单 */
+.adaptive-content {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* 但允许文本选择用于我们的划词功能 */
+.adaptive-content p, 
+.adaptive-content span, 
+.adaptive-content div:not(.no-content) {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
 }
 
 .container {
@@ -31,7 +66,9 @@ body {
     position: relative;
 }
 
-/* 侧边栏样式 */
+/* ----------------------------------------------------
+ * 侧边栏样式
+ * ---------------------------------------------------- */
 .sidebar {
     width: 300px;
     background-color: white;
@@ -84,6 +121,7 @@ body {
     overflow-y: auto;
     padding: 10px 0;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .toc-item {
@@ -91,6 +129,10 @@ body {
     cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
     transition: background-color 0.2s;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 .toc-item:hover {
@@ -103,7 +145,13 @@ body {
     font-weight: bold;
 }
 
-/* 设置侧边栏 */
+.toc-item.level-1 { padding-left: 15px; }
+.toc-item.level-2 { padding-left: 25px; font-size: 0.9em; }
+.toc-item.level-3 { padding-left: 35px; font-size: 0.85em; }
+
+/* ----------------------------------------------------
+ * 设置侧边栏
+ * ---------------------------------------------------- */
 .settings-sidebar {
     width: 300px;
     background-color: white;
@@ -140,6 +188,7 @@ body {
     overflow-y: auto;
     padding: 20px;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .setting-group {
@@ -157,6 +206,9 @@ body {
     justify-content: space-between;
     align-items: center;
     user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .setting-group-header h3 {
@@ -286,6 +338,10 @@ input:checked + .slider:before {
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 .btn:hover {
@@ -302,7 +358,9 @@ input:checked + .slider:before {
     background-color: #e6f7ff;
 }
 
-/* 主内容区域 */
+/* ----------------------------------------------------
+ * 主内容区域
+ * ---------------------------------------------------- */
 .main-content {
     flex: 1;
     display: flex;
@@ -313,6 +371,9 @@ input:checked + .slider:before {
     height: 100vh;
 }
 
+/* ----------------------------------------------------
+ * 顶部工具栏
+ * ---------------------------------------------------- */
 .reader-header {
     padding: 10px 20px;
     background-color: white;
@@ -349,322 +410,102 @@ input:checked + .slider:before {
     flex-wrap: nowrap;
 }
 
-.reader-content {
-    flex: 1;
+.page-indicator {
+    font-size: 0.9rem;
+    color: #666;
+    text-align: center;
+    min-width: 120px;
+    white-space: nowrap;
     overflow: hidden;
-    padding: 20px;
-    background-color: white;
-    margin: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    position: relative;
+    text-overflow: ellipsis;
 }
 
-.swipe-container {
-    width: 100%;
-    height: 100%;
+/* ----------------------------------------------------
+ * EPUB显示区域
+ * ---------------------------------------------------- */
+.epub-display-area {
+    flex: 1;
     position: relative;
+    background: #ecf0f1;
     overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     touch-action: pan-y pinch-zoom;
 }
 
-/* 缩小边缘点击区域 */
-.edge-tap-area {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    width: 40px; /* 缩小宽度 */
-    z-index: 5;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-    opacity: 0; /* 默认隐藏 */
-}
-
-.edge-tap-area.left {
-    left: 0;
-}
-
-.edge-tap-area.right {
-    right: 0;
-}
-
-.edge-tap-area:hover,
-.edge-tap-area:active {
-    background-color: rgba(52, 152, 219, 0.1);
-    opacity: 1; /* 悬停或点击时显示 */
-}
-
-/* 滚动模式 */
-.page-content.scroll-mode {
+.book-container {
+    position: relative;
     width: 100%;
     height: 100%;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 20px;
-    font-size: var(--base-font-size);
-    line-height: 1.8;
-    user-select: text;
-    margin: 0;
-}
-
-/* 分页模式样式 */
-.page-content.paged-mode {
-    width: 100%;
-    height: 100%;
+    background: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
     overflow: hidden;
-    position: relative;
 }
 
-.paged-content {
+/* 内容包装器：用于水平平移 */
+.content-wrapper {
+    width: fit-content;
+    height: 100%;
+    transition: transform 0.4s ease;
+    will-change: transform;
+    display: flex;
+}
+
+/* 实际内容：Multi-column 容器 */
+.adaptive-content {
+    flex-shrink: 0;
     width: 100%;
     height: 100%;
-    position: relative;
-}
-
-.page-section {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 20px;
-    background: white;
-    display: none; /* 默认隐藏 */
-}
-
-.page-section.active {
-    display: block; /* 激活的页面显示 */
-    z-index: 1;
-}
-
-/* 确保分页内容也有正确的样式 */
-.page-section h1, .page-section h2, .page-section h3 {
-    margin-bottom: 15px;
-    color: var(--secondary-color);
-}
-
-.page-section p {
-    margin-bottom: 15px;
-    text-align: justify;
-}
-
-.page-section img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 0 auto;
-}
-
-/* 滚动模式样式保持不变 */
-.page-content.scroll-mode h1, 
-.page-content.scroll-mode h2, 
-.page-content.scroll-mode h3 {
-    margin-bottom: 15px;
-    color: var(--secondary-color);
-}
-
-.page-content.scroll-mode p {
-    margin-bottom: 15px;
-    text-align: justify;
-}
-
-.page-content.scroll-mode img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 0 auto;
-}
-
-.highlight {
-    background-color: #fff9c4 !important;
-    transition: background-color 0.3s ease;
-    padding: 2px 1px;
-    border-radius: 2px;
-    cursor: pointer;
-}
-
-.active-highlight {
-    background-color: #ffeb3b !important;
-    box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.3);
-}
-
-.dictionary-modal {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    z-index: 10000;
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    display: none;
-}
-
-.dictionary-modal.show {
-    display: flex;
-    flex-direction: column;
-    animation: modalFadeIn 0.3s ease;
-}
-
-.dictionary-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 9999;
-    display: none;
-}
-
-.dictionary-modal-overlay.show {
-    display: block;
-}
-
-.dictionary-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.dictionary-modal-title {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: var(--secondary-color);
-}
-
-.dictionary-modal-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #666;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.dictionary-modal-close:hover {
-    color: var(--primary-color);
-}
-
-.dictionary-modal-content {
+    padding: 30px 20px;
     line-height: 1.6;
-    flex: 1;
-    overflow-y: auto;
+    font-size: 16px;
+    
+    /* Multi-column 分页核心属性 */
+    column-fill: auto;
+    column-gap: 60px;
+    /* column-width 由 JS 动态设置 */
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
 }
 
-.dictionary-modal-footer {
-    margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
+/* 内容排版优化 */
+.adaptive-content * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-.dictionary-result {
-    background: #f8f9fa;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 15px;
+.adaptive-content p {
+    margin: 0 0 0.8em 0;
+    text-align: justify;
+    word-break: break-word;
 }
 
-.dictionary-word {
-    font-size: 1.3rem;
-    font-weight: bold;
-    color: var(--secondary-color);
-    margin-bottom: 8px;
+.adaptive-content h1,
+.adaptive-content h2,
+.adaptive-content h3,
+.adaptive-content h4,
+.adaptive-content h5,
+.adaptive-content h6 {
+    margin: 1em 0 0.5em 0;
+    line-height: 1.3;
+    word-break: break-word;
+    break-inside: avoid-column;
 }
 
-.phonetic {
-    color: #666;
-    font-style: italic;
-    margin-bottom: 10px;
+.adaptive-content img {
+    max-width: 100% !important;
+    height: auto !important;
+    display: block;
+    margin: 10px auto;
+    max-height: 50vh !important;
+    break-inside: avoid-column;
 }
 
-.dictionary-definition {
-    color: var(--text-color);
-    margin-bottom: 10px;
-}
-
-.dictionary-example {
-    margin-top: 10px;
-    padding-left: 15px;
-    border-left: 3px solid var(--primary-color);
-    color: #666;
-    font-style: italic;
-}
-
-.loading {
-    text-align: center;
-    padding: 20px;
-    color: #666;
-}
-
-.error {
-    color: #e74c3c;
-    text-align: center;
-    padding: 10px;
-}
-
-@keyframes modalFadeIn {
-    from { opacity: 0; transform: translate(-50%, -60%); }
-    to { opacity: 1; transform: translate(-50%, -50%); }
-}
-
-.upload-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    padding: 40px;
-    text-align: center;
-}
-
-.upload-area {
-    border: 2px dashed var(--border-color);
-    border-radius: 10px;
-    padding: 40px;
-    width: 100%;
-    max-width: 500px;
-    cursor: pointer;
-    transition: all 0.3s;
-    margin-bottom: 20px;
-}
-
-.upload-area:hover {
-    border-color: var(--primary-color);
-    background-color: #f9f9f9;
-}
-
-.upload-area.dragover {
-    border-color: var(--primary-color);
-    background-color: #e6f7ff;
-}
-
-.upload-icon {
-    font-size: 3rem;
-    color: var(--primary-color);
-    margin-bottom: 15px;
-}
-
+/* ----------------------------------------------------
+ * 音频播放器
+ * ---------------------------------------------------- */
 .player-container {
     padding: 15px 20px;
     background-color: white;
@@ -684,11 +525,20 @@ input:checked + .slider:before {
 .player-btn {
     background: none;
     border: none;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     cursor: pointer;
     color: var(--primary-color);
-    padding: 5px;
+    padding: 8px;
     min-width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.player-btn:hover {
+    background-color: #f0f0f0;
 }
 
 .progress-container {
@@ -705,6 +555,7 @@ input:checked + .slider:before {
     border-radius: 3px;
     overflow: hidden;
     cursor: pointer;
+    position: relative;
 }
 
 .progress {
@@ -712,178 +563,417 @@ input:checked + .slider:before {
     background-color: var(--primary-color);
     width: 0%;
     transition: width 0.1s;
+    border-radius: 3px;
 }
 
 .time-display {
     font-size: 0.9rem;
     color: #666;
-    min-width: 100px;
+    min-width: 45px;
     text-align: center;
 }
 
 .playback-rate {
-    padding: 5px;
+    padding: 6px 10px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background-color: white;
+    font-size: 0.9rem;
     min-height: 36px;
 }
 
-.loader {
+/* 音频高亮样式 */
+.audio-highlight {
+    background-color: #fff9c4 !important;
+    transition: background-color 0.3s ease;
+    cursor: pointer;
+}
+
+.audio-highlight.active {
+    background-color: #ffeb3b !important;
+    box-shadow: 0 0 0 2px #ff9800;
+}
+
+.audio-highlight:hover {
+    background-color: #ffeb3b !important;
+}
+
+/* 用户高亮样式 */
+.user-highlight {
+    background-color: rgba(255, 235, 59, 0.3) !important;
+    border-bottom: 2px solid #ff9800;
+}
+
+/* ----------------------------------------------------
+ * 词典弹窗
+ * ---------------------------------------------------- */
+.dictionary-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.dictionary-modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.modal-header button {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #7f8c8d;
+}
+
+.modal-body {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    max-height: 400px;
+}
+
+.modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* 词典结果样式 */
+.dictionary-result {
+    line-height: 1.6;
+}
+
+.dictionary-word {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 5px;
+}
+
+.phonetic {
+    font-size: 16px;
+    color: #7f8c8d;
+    margin-bottom: 15px;
+    font-style: italic;
+}
+
+.dictionary-definition {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
+}
+
+.dictionary-definition strong {
+    color: #e74c3c;
+    font-size: 14px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
     display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255,255,255,.3);
+}
+
+.dictionary-example {
+    color: #27ae60;
+    font-style: italic;
+    margin-top: 5px;
+    padding-left: 10px;
+    border-left: 2px solid #27ae60;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: #7f8c8d;
+}
+
+.loader {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
     border-radius: 50%;
-    border-top-color: #fff;
-    animation: spin 1s ease-in-out infinite;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-.page-indicator {
-    font-size: 0.9rem;
-    color: #666;
+.error {
     text-align: center;
-    min-width: 120px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    padding: 30px 20px;
+    color: #e74c3c;
 }
 
-/* === 修复：彻底禁用浏览器默认工具栏并启用自定义工具栏 === */
-
-/* 1. 全局禁用文本选择工具栏 */
-* {
-    -webkit-touch-callout: none !important; /* 禁用长按工具栏 */
-    -webkit-user-callout: none !important;
-    -webkit-user-select: none !important;
-    -moz-user-select: none !important;
-    -ms-user-select: none !important;
-    user-select: none !important;
-}
-
-/* 2. 为阅读区域明确启用文本选择（使用更强的选择器） */
-.reader-content,
-.reader-content *,
-.page-content,
-.page-content *,
-.page-section,
-.page-section *,
-.swipe-container,
-.swipe-container *,
-.epub-content,
-.epub-content *,
-.paged-content,
-.paged-content *,
-[class*="page-"],
-[class*="content"] {
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    -ms-user-select: text !important;
-    user-select: text !important;
-    -webkit-touch-callout: default !important;
-}
-
-/* 3. 确保所有阅读相关的元素都能选择文本 */
-.page-content.scroll-mode,
-.page-content.scroll-mode *,
-.page-content.paged-mode,
-.page-content.paged-mode *,
-.paged-content,
-.paged-content *,
-.page-section,
-.page-section * {
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    -ms-user-select: text !important;
-    user-select: text !important;
-}
-
-/* 4. 针对移动端特殊处理 */
-@media (max-width: 768px) {
-    .reader-content,
-    .reader-content *,
-    .page-content,
-    .page-content *,
-    .page-section,
-    .page-section * {
-        -webkit-user-select: text !important;
-        -moz-user-select: text !important;
-        -ms-user-select: text !important;
-        user-select: text !important;
-        -webkit-touch-callout: default !important;
-        -webkit-tap-highlight-color: rgba(0, 0, 0, 0) !important;
-    }
-    
-    /* 移动端边缘点击区域更小 */
-    .edge-tap-area {
-        width: 30px;
-    }
-}
-
-/* 自定义选择工具栏 */
+/* ----------------------------------------------------
+ * 选择工具栏 - 修改位置和样式
+ * ---------------------------------------------------- */
 .selection-toolbar {
     position: fixed;
-    background: white;
-    border: 1px solid var(--border-color);
+    background: #2c3e50;
     border-radius: 8px;
     padding: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 10000;
     display: none;
-    align-items: center;
-    gap: 8px;
-    transform: translateY(-100%);
+    gap: 5px;
+    z-index: 999;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    transform: translateY(-10px);
     opacity: 0;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    max-width: calc(100vw - 20px);
+    transition: opacity 0.3s, transform 0.3s;
+    /* 增加距离，避免太靠近选择文本 */
+    margin-top: 10px;
 }
 
 .selection-toolbar.show {
     display: flex;
     opacity: 1;
-    transform: translateY(-110%);
+    transform: translateY(0);
 }
 
-.selection-toolbar-btn {
-    background: var(--primary-color);
+.toolbar-btn {
+    background: #34495e;
     color: white;
     border: none;
-    border-radius: 4px;
     padding: 8px 12px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 12px;
     white-space: nowrap;
+    transition: background 0.3s;
+}
+
+.toolbar-btn:hover {
+    background: #3498db;
+}
+
+/* ----------------------------------------------------
+ * 翻页区域
+ * ---------------------------------------------------- */
+.swipe-area {
+    position: absolute;
+    top: 0;
+    width: 20%;
+    height: 100%;
+    z-index: 10;
+    cursor: pointer;
+    touch-action: pan-y;
+}
+
+.left-swipe { left: 0; }
+.right-swipe { right: 0; }
+
+/* ----------------------------------------------------
+ * 遮罩层 - 修复点击问题
+ * ---------------------------------------------------- */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    z-index: 95; /* 降低z-index，避免覆盖侧边栏 */
+    cursor: pointer;
+}
+
+.overlay.show {
+    display: block;
+}
+
+/* 确保侧边栏在遮罩层之上 */
+.sidebar,
+.settings-sidebar {
+    z-index: 100;
+}
+
+/* ----------------------------------------------------
+ * 加载和状态样式
+ * ---------------------------------------------------- */
+.no-content, .loading {
     display: flex;
+    justify-content: center;
     align-items: center;
-    gap: 4px;
-    transition: background-color 0.2s;
-    flex-shrink: 0;
+    height: 100%;
+    width: 100%;
+    text-align: center;
+    color: #7f8c8d;
+    flex-direction: column;
+    padding: 20px;
 }
 
-.selection-toolbar-btn:hover {
-    background: #2980b9;
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
 }
 
-.selection-toolbar-btn.outline {
-    background: transparent;
-    border: 1px solid var(--primary-color);
-    color: var(--primary-color);
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-.selection-toolbar-btn.outline:hover {
-    background: #e6f7ff;
+.loading p {
+    margin-top: 10px;
+    color: #3498db;
 }
 
-/* 响应式设计 - 移动端 */
+/* Toast 消息 */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #2c3e50;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 4px;
+    z-index: 1001;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.toast.success { background: #27ae60; }
+.toast.error { background: #e74c3c; }
+.toast.warning { background: #f39c12; }
+
+/* ----------------------------------------------------
+ * 加载指示器
+ * ---------------------------------------------------- */
+.loading-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    font-size: 1.2rem;
+    color: #3498db;
+}
+
+.loading-indicator .spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+.loading-indicator p {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+/* ----------------------------------------------------
+ * 音频错误提示样式
+ * ---------------------------------------------------- */
+.audio-error {
+    margin: 10px 0;
+    padding: 10px;
+    background: #ffeaa7;
+    border: 1px solid #fdcb6e;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.audio-error details {
+    margin-top: 5px;
+}
+
+.audio-error summary {
+    cursor: pointer;
+    font-weight: bold;
+}
+
+/* ----------------------------------------------------
+ * 增强音频高亮样式
+ * ---------------------------------------------------- */
+.audio-highlight {
+    transition: all 0.3s ease;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.audio-highlight:hover {
+    background-color: #fff9c4 !important;
+    transform: scale(1.01);
+}
+
+.audio-highlight.active {
+    background-color: #ffeb3b !important;
+    box-shadow: 0 0 0 2px #ff9800;
+    transform: scale(1.02);
+}
+
+/* 确保音频高亮在用户高亮之上显示 */
+.audio-highlight.user-highlight {
+    z-index: 1;
+    position: relative;
+}
+
+/* 虚拟章节高亮样式 */
+.active-virtual-chapter {
+    background-color: rgba(52, 152, 219, 0.1) !important;
+    border-left: 4px solid #3498db !important;
+    padding-left: 10px !important;
+    transition: all 0.3s ease;
+}
+
+/* ----------------------------------------------------
+ * 移动端优化样式
+ * ---------------------------------------------------- */
 @media (max-width: 768px) {
-    .container {
-        flex-direction: column;
-    }
-    
     .sidebar {
         width: 100%;
         height: 70vh;
@@ -915,12 +1005,6 @@ input:checked + .slider:before {
     .main-content {
         height: 100vh;
         padding-bottom: 0;
-    }
-    
-    .reader-content {
-        margin: 10px;
-        padding: 10px;
-        height: calc(100vh - 120px);
     }
     
     .reader-header {
@@ -974,40 +1058,15 @@ input:checked + .slider:before {
         display: inline !important;
     }
     
-    .page-content {
-        padding: 15px;
-        font-size: 1rem;
-        line-height: 1.6;
-        height: 100%;
+    .adaptive-content {
+        padding: 20px 15px;
+        font-size: 15px;
+        line-height: 1.5;
+        column-gap: 40px;
     }
     
-    .dictionary-modal {
-        width: 95%;
-        padding: 15px;
-        margin: 20px;
-    }
-    
-    .player-container {
-        padding: 10px 15px;
-        position: static;
-    }
-    
-    .player-controls {
-        gap: 10px;
-    }
-    
-    .time-display {
-        min-width: 80px;
-        font-size: 0.8rem;
-    }
-    
-    .upload-container {
-        padding: 20px;
-        height: calc(100vh - 120px);
-    }
-    
-    .upload-area {
-        padding: 30px 20px;
+    .swipe-area {
+        width: 25%;
     }
     
     .page-indicator {
@@ -1018,21 +1077,62 @@ input:checked + .slider:before {
         text-overflow: ellipsis;
         flex-shrink: 0;
     }
-
-    .selection-toolbar {
-        padding: 6px;
-        gap: 6px;
-        max-width: calc(100vw - 20px);
+    
+    .toc-container {
+        padding: 8px;
+        /* 移动端滑动优化 */
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
     
-    .selection-toolbar-btn {
-        padding: 10px 14px;
-        font-size: 0.9rem;
-        min-height: 44px;
+    .toc-item {
+        padding: 12px 10px;
+        font-size: 15px;
+    }
+    
+    .selection-toolbar {
+        padding: 6px;
+        /* 移动端工具栏位置调整 */
+        margin-top: 15px;
+    }
+    
+    .toolbar-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    
+    /* 移动端音频播放器优化 */
+    .player-container {
+        padding: 10px 15px;
+    }
+    
+    .player-controls {
+        gap: 10px;
+    }
+    
+    .time-display {
+        min-width: 40px;
+        font-size: 0.8rem;
+    }
+    
+    .playback-rate {
+        padding: 4px 8px;
+        font-size: 0.8rem;
+    }
+    
+    /* 移动端遮罩层优化 */
+    .overlay {
+        z-index: 95;
     }
 }
 
 @media (max-width: 480px) {
+    .adaptive-content {
+        padding: 15px 12px;
+        font-size: 14px;
+        column-gap: 30px;
+    }
+    
     .reader-header {
         padding: 6px 8px;
         min-height: 50px;
@@ -1041,11 +1141,6 @@ input:checked + .slider:before {
     
     .header-top-row {
         gap: 3px;
-    }
-    
-    .page-content {
-        padding: 10px;
-        font-size: 0.95rem;
     }
     
     .btn {
@@ -1067,6 +1162,25 @@ input:checked + .slider:before {
         display: none !important;
     }
     
+    .swipe-area {
+        width: 30%;
+    }
+    
+    .page-indicator {
+        font-size: 0.75rem;
+        min-width: 90px;
+    }
+    
+    .toc-item {
+        padding: 10px 8px;
+        font-size: 14px;
+    }
+    
+    .modal-content {
+        width: 95%;
+    }
+    
+    /* 超小屏幕音频播放器优化 */
     .player-container {
         padding: 8px 12px;
     }
@@ -1076,23 +1190,68 @@ input:checked + .slider:before {
     }
     
     .time-display {
-        min-width: 70px;
+        min-width: 35px;
         font-size: 0.75rem;
+    }
+    
+    .playback-rate {
+        padding: 3px 6px;
+        font-size: 0.75rem;
+    }
+}
+
+/* 超小屏幕优化 */
+@media (max-width: 360px) {
+    .adaptive-content {
+        padding: 12px 10px;
+        font-size: 13px;
+    }
+    
+    .reader-header {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 4px;
+    }
+    
+    .reader-header button {
+        padding: 4px 6px;
+        font-size: 11px;
     }
     
     .page-indicator {
-        font-size: 0.75rem;
-        min-width: 90px;
+        font-size: 11px;
     }
+}
 
-    .selection-toolbar-btn span:last-child {
-        display: none !important;
+/* 横屏优化 */
+@media (max-height: 500px) and (orientation: landscape) {
+    .reader-header {
+        min-height: 40px;
+        padding: 6px 10px;
     }
     
-    .selection-toolbar-btn {
-        padding: 8px;
-        min-width: 40px;
-        justify-content: center;
+    .adaptive-content {
+        padding: 15px;
+    }
+    
+    .sidebar {
+        max-height: 100vh;
+    }
+    
+    .settings-sidebar {
+        max-height: 100vh;
+    }
+    
+    .toc-container {
+        max-height: calc(100vh - 60px);
+    }
+    
+    .settings-content {
+        max-height: calc(100vh - 60px);
+    }
+    
+    .player-container {
+        padding: 8px 15px;
     }
 }
 
@@ -1122,10 +1281,11 @@ input:checked + .slider:before {
     .header-bottom-row {
         display: flex;
     }
-}
-
-::selection {
-    background-color: rgba(52, 152, 219, 0.3);
+    
+    /* 桌面端工具栏位置优化 */
+    .selection-toolbar {
+        margin-top: 15px;
+    }
 }
 
 /* 触摸设备优化 */
@@ -1141,99 +1301,8 @@ input:checked + .slider:before {
     .toc-item:hover {
         background-color: transparent;
     }
-}
-
-/* EPUB内容自适应样式 */
-.epub-content {
-    width: 100%;
-    height: auto;
-    overflow: visible;
-}
-
-.epub-content * {
-    max-width: 100%;
-}
-
-.epub-content table {
-    width: 100% !important;
-    border-collapse: collapse;
-}
-
-.epub-content img {
-    max-width: 100%;
-    height: auto;
-}
-
-.epub-content pre, .epub-content code {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-/* 确保所有平台功能按钮都显示 */
-.function-buttons {
-    display: flex;
-}
-
-.function-buttons .btn {
-    display: flex;
-}
-
-.function-buttons .btn span {
-    display: inline;
-}
-
-/* 新增：选择工具栏定位优化 */
-.selection-toolbar {
-    max-width: 90vw;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-}
-
-.selection-toolbar-btn {
-    flex-shrink: 0;
-}
-
-/* 新增：移动端工具栏按钮文字隐藏优化 */
-@media (max-width: 480px) {
-    .function-buttons .btn span:last-child {
-        display: none !important;
-    }
     
-    .function-buttons .btn {
-        padding: 8px;
-        min-width: 44px;
-        justify-content: center;
+    .player-btn:hover {
+        background-color: transparent;
     }
-    
-    .selection-toolbar-btn span:last-child {
-        display: none !important;
-    }
-    
-    .selection-toolbar-btn {
-        padding: 10px;
-        min-width: 44px;
-        justify-content: center;
-    }
-}
-
-/* 新增：阅读区域滚动优化 */
-.page-content.scroll-mode {
-    scroll-behavior: smooth;
-}
-
-.page-content.scroll-mode::-webkit-scrollbar {
-    width: 6px;
-}
-
-.page-content.scroll-mode::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-.page-content.scroll-mode::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-
-.page-content.scroll-mode::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
 }
