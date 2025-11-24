@@ -9,6 +9,8 @@
     --text-color: #333;
     --border-color: #ddd;
     --base-font-size: 1.1rem;
+    --page-turn-area-width: 80px; /* 新增：定义翻页区域宽度 */
+    --page-turn-highlight-color: rgba(52, 152, 219, 0.3); /* 新增：翻页区域高亮颜色 */
 }
 
 /* 全局重置 */
@@ -150,10 +152,10 @@ body {
 .toc-item.level-3 { padding-left: 35px; font-size: 0.85em; }
 
 /* ----------------------------------------------------
- * 设置侧边栏
+ * 设置侧边栏 - 已修改：增加宽度，调整选项布局
  * ---------------------------------------------------- */
 .settings-sidebar {
-    width: 300px;
+    width: 400px; /* 从300px增加到400px，提供更多空间 */
     background-color: white;
     border-left: 1px solid var(--border-color);
     display: flex;
@@ -238,23 +240,31 @@ body {
     max-height: 1000px;
 }
 
+/* 设置项布局优化 - 已修改：确保标题横排 */
 .setting-item {
     margin-bottom: 15px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: nowrap; /* 防止换行 */
+    gap: 15px; /* 添加间距 */
 }
 
 .setting-label {
     font-size: 0.95rem;
     color: var(--text-color);
     flex: 1;
+    min-width: 120px; /* 确保标签有最小宽度 */
+    white-space: nowrap; /* 防止文字换行 */
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .setting-control {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0; /* 防止控制元素被压缩 */
 }
 
 /* 输入框样式 */
@@ -501,6 +511,37 @@ input:checked + .slider:before {
     margin: 10px auto;
     max-height: 50vh !important;
     break-inside: avoid-column;
+}
+
+/* ----------------------------------------------------
+ * 未导入EPUB时的内容框样式 - 已修改：标题居中
+ * ---------------------------------------------------- */
+.no-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    text-align: center;
+    color: #7f8c8d;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.no-content h2 {
+    font-size: 1.8rem;
+    margin-bottom: 15px;
+    color: var(--secondary-color);
+    text-align: center; /* 确保标题居中 */
+    width: 100%;
+}
+
+.no-content p {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    max-width: 500px;
+    margin: 0 auto 20px;
+    text-align: center; /* 确保段落文本居中 */
 }
 
 /* ----------------------------------------------------
@@ -783,20 +824,43 @@ input:checked + .slider:before {
 }
 
 /* ----------------------------------------------------
- * 翻页区域
+ * 翻页区域 - 已修改：只留左右边缘范围点击才会翻页，并且在范围内点击时可以显示颜色范围
  * ---------------------------------------------------- */
 .swipe-area {
     position: absolute;
     top: 0;
-    width: 20%;
+    width: var(--page-turn-area-width); /* 使用变量定义宽度 */
     height: 100%;
     z-index: 10;
     cursor: pointer;
     touch-action: pan-y;
+    transition: background-color 0.2s ease; /* 添加过渡效果 */
 }
 
-.left-swipe { left: 0; }
-.right-swipe { right: 0; }
+/* 左翻页区域 */
+.left-swipe { 
+    left: 0; 
+    background: linear-gradient(to right, var(--page-turn-highlight-color), transparent);
+    opacity: 0; /* 默认透明 */
+}
+
+/* 右翻页区域 */
+.right-swipe { 
+    right: 0; 
+    background: linear-gradient(to left, var(--page-turn-highlight-color), transparent);
+    opacity: 0; /* 默认透明 */
+}
+
+/* 点击时显示颜色范围 */
+.swipe-area:active,
+.swipe-area.active {
+    opacity: 1; /* 点击时显示颜色 */
+}
+
+/* 悬停时轻微显示，提供视觉反馈 */
+.swipe-area:hover {
+    opacity: 0.5;
+}
 
 /* ----------------------------------------------------
  * 遮罩层 - 修复点击问题
@@ -826,7 +890,7 @@ input:checked + .slider:before {
 /* ----------------------------------------------------
  * 加载和状态样式
  * ---------------------------------------------------- */
-.no-content, .loading {
+.loading {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -989,7 +1053,7 @@ input:checked + .slider:before {
     }
     
     .settings-sidebar {
-        width: 100%;
+        width: 100%; /* 移动端保持全宽 */
         height: 70vh;
         position: fixed;
         top: 0;
@@ -1065,8 +1129,9 @@ input:checked + .slider:before {
         column-gap: 40px;
     }
     
+    /* 移动端翻页区域调整 */
     .swipe-area {
-        width: 25%;
+        width: 25%; /* 移动端增大翻页区域 */
     }
     
     .page-indicator {
@@ -1088,6 +1153,23 @@ input:checked + .slider:before {
     .toc-item {
         padding: 12px 10px;
         font-size: 15px;
+    }
+    
+    /* 移动端设置项优化 */
+    .setting-item {
+        flex-direction: column; /* 移动端改为垂直布局 */
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .setting-label {
+        min-width: auto;
+        white-space: normal; /* 移动端允许换行 */
+    }
+    
+    .setting-control {
+        width: 100%;
+        justify-content: flex-start;
     }
     
     .selection-toolbar {
@@ -1163,7 +1245,7 @@ input:checked + .slider:before {
     }
     
     .swipe-area {
-        width: 30%;
+        width: 30%; /* 超小屏幕进一步增大翻页区域 */
     }
     
     .page-indicator {
@@ -1304,5 +1386,10 @@ input:checked + .slider:before {
     
     .player-btn:hover {
         background-color: transparent;
+    }
+    
+    /* 触摸设备上悬停效果改为点击效果 */
+    .swipe-area:hover {
+        opacity: 0; /* 触摸设备上悬停时不显示颜色 */
     }
 }
